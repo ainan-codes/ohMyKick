@@ -77,8 +77,8 @@ export function getTeamBackground(
     // Portugal - Split roughly 40/60
     return (
       <div style={{ display: 'flex', width: '100%', height: '100%' }}>
-        <div style={{ flex: 4, backgroundColor: primary }} />
-        <div style={{ flex: 6, backgroundColor: secondary }} />
+        <div style={{ width: '40%', height: '100%', backgroundColor: primary }} />
+        <div style={{ width: '60%', height: '100%', backgroundColor: secondary }} />
       </div>
     );
   }
@@ -87,9 +87,9 @@ export function getTeamBackground(
     // Germany - Horizontal stripes (black, red, yellow)
     return (
       <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
-        <div style={{ flex: 1, backgroundColor: primary }} />
-        <div style={{ flex: 1, backgroundColor: secondary }} />
-        <div style={{ flex: 1, backgroundColor: '#FFCC00' }} />
+        <div style={{ width: '100%', height: '33.3%', backgroundColor: primary }} />
+        <div style={{ width: '100%', height: '33.3%', backgroundColor: secondary }} />
+        <div style={{ width: '100%', height: '33.4%', backgroundColor: '#FFCC00' }} />
       </div>
     );
   }
@@ -98,9 +98,9 @@ export function getTeamBackground(
     // Spain - Thick horizontal yellow stripe
     return (
       <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
-        <div style={{ flex: 1, backgroundColor: primary }} />
-        <div style={{ flex: 1.5, backgroundColor: secondary }} />
-        <div style={{ flex: 1, backgroundColor: primary }} />
+        <div style={{ width: '100%', height: '25%', backgroundColor: primary }} />
+        <div style={{ width: '100%', height: '50%', backgroundColor: secondary }} />
+        <div style={{ width: '100%', height: '25%', backgroundColor: primary }} />
       </div>
     );
   }
