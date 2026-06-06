@@ -1,5 +1,6 @@
 import { ImageResponse } from 'next/og';
 import { NextRequest } from 'next/server';
+import { getTeamBackground } from '../teamPatterns';
 
 export const runtime = 'edge';
 
@@ -21,6 +22,8 @@ export async function GET(request: NextRequest) {
   const referralCode = searchParams.get('referralCode') ?? '';
   const homePrimary = searchParams.get('homePrimary') ?? '#1a1a6e';
   const awayPrimary = searchParams.get('awayPrimary') ?? '#6e1a1a';
+  const homeCode = searchParams.get('homeCountryCode') ?? '';
+  const awayCode = searchParams.get('awayCountryCode') ?? '';
 
   return new ImageResponse(
     (
@@ -28,20 +31,29 @@ export async function GET(request: NextRequest) {
         style={{
           width: 1080,
           height: 1920,
-          background: `linear-gradient(175deg, ${homePrimary}cc 0%, #07080f 50%, ${awayPrimary}cc 100%)`,
+          backgroundColor: '#07080f',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          padding: '90px 80px',
           fontFamily: 'sans-serif',
           position: 'relative',
         }}
       >
+        {/* Left Background */}
+        <div style={{ position: 'absolute', top: 0, left: 0, width: 540, height: 1920, display: 'flex' }}>
+          {getTeamBackground(homeCode, 'left', homePrimary, '#FFFFFF')}
+        </div>
+
+        {/* Right Background */}
+        <div style={{ position: 'absolute', top: 0, right: 0, width: 540, height: 1920, display: 'flex' }}>
+          {getTeamBackground(awayCode, 'right', awayPrimary, '#FFFFFF')}
+        </div>
+
         {/* Dark overlay for readability */}
         <div style={{
           position: 'absolute',
           inset: 0,
-          background: 'rgba(0,0,0,0.55)',
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.65) 50%, rgba(0,0,0,0.3) 100%)',
           display: 'flex',
         }} />
 
@@ -53,6 +65,7 @@ export async function GET(request: NextRequest) {
           alignItems: 'center',
           width: '100%',
           height: '100%',
+          padding: '90px 80px',
         }}>
           {/* Stage + Date */}
           <div style={{

@@ -93,6 +93,8 @@ async function processPosterJob(job: { data: any }) {
       referralCode: user.referral_code,
       homePrimary: homeCountry?.primaryColor ?? '#1a1a6e',
       awayPrimary: awayCountry?.primaryColor ?? '#6e1a1a',
+      homeCountryCode: match.home_country_code ?? '',
+      awayCountryCode: match.away_country_code ?? '',
     });
     posterApiUrl = `${posterServiceUrl}/api/posters/prematch?${params}`;
   } else if (type === 'result' && matchId && predictionId) {
@@ -118,6 +120,8 @@ async function processPosterJob(job: { data: any }) {
       totalPredictions: String(stats.total),
       correctPredictions: String(stats.correct),
       referralCode: user.referral_code,
+      homeCountryCode: match.home_country_code ?? '',
+      awayCountryCode: match.away_country_code ?? '',
     });
     posterApiUrl = `${posterServiceUrl}/api/posters/result?${params}`;
   } else {
