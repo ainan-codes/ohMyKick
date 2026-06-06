@@ -115,13 +115,27 @@ export function getTeamBackground(
     );
   }
 
-  // Default: solid primary color
+  // Default: A dynamic dual-color angled split that works beautifully for any country
   return (
     <div style={{ 
       display: 'flex', 
       width: '100%', 
       height: '100%', 
-      backgroundColor: primary 
-    }} />
+      backgroundColor: primary,
+      position: 'relative',
+      overflow: 'hidden'
+    }}>
+      <div style={{
+        position: 'absolute',
+        top: -200,
+        bottom: -200,
+        [isLeft ? 'right' : 'left']: '40%',
+        width: '150%',
+        backgroundColor: secondary,
+        transform: isLeft ? 'rotate(-25deg)' : 'rotate(25deg)',
+        opacity: 0.85,
+        display: 'flex'
+      }} />
+    </div>
   );
 }
