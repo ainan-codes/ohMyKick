@@ -26,9 +26,7 @@ export async function GET(request: NextRequest) {
   const awayCode = searchParams.get('awayCountryCode') ?? '';
 
   const homePrimaryColor = homePrimary;
-  const homeSecondaryColor = '#FFFFFF'; // or custom secondary
   const awayPrimaryColor = awayPrimary;
-  const awaySecondaryColor = '#FFFFFF';
 
   return new ImageResponse(
     (
@@ -230,8 +228,8 @@ export async function GET(request: NextRequest) {
             {/* VS Badge in the center */}
             <div style={{
               position: 'absolute',
-              left: 450,
-              top: 250,
+              left: 410,
+              top: 230,
               width: 100,
               height: 100,
               borderRadius: '50%',
@@ -434,5 +432,4 @@ export async function GET(request: NextRequest) {
     ),
     { width: 1080, height: 1920 }
   );
-}
 }
