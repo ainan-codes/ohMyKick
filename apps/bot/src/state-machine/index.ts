@@ -108,9 +108,8 @@ export async function processMessage(
         messages: [
           {
             kind: 'buttons',
-            text: `Please send a photo or tap Skip:`,
+            text: `📷 *To add a photo:* Tap the paperclip 📎 or camera icon next to your message box and upload your picture.\n\nOtherwise, tap Skip for Now:`,
             buttons: [
-              { id: 'photo_send', label: '📸 Send My Photo' },
               { id: 'photo_skip', label: '⏭ Skip for Now' },
             ],
           },

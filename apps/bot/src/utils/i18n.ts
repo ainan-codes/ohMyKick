@@ -6,7 +6,7 @@ export const TRANSLATIONS: Record<Language, Record<string, string | ((...args: a
     invalid_name: `⚠️ Please enter a valid name (2–40 characters, letters only).\n\nWhat's your name?`,
     greet_name: (name: string) => `Nice to meet you, ${name}! 🙌\n\nWhich country do you support in the World Cup 2026?`,
     choose_country: 'Choose Country',
-    photo_prompt: (flag: string, country: string) => `${flag} *${country}* — a fan of champions.\n\nAdd a photo to your fan passport?\nYour photo makes your match posters personal and more shareable.\n\n_(You can skip and add later)_`,
+    photo_prompt: (flag: string, country: string) => `${flag} *${country}* — a fan of champions.\n\n📷 *To add a photo:* Tap the paperclip 📎 or camera icon next to your text input field and upload a photo.\n\nOtherwise, you can skip and add it later!`,
     onboarding_preparing: (name: string, fanId: string, flag: string, country: string, referralCode: string) =>
       `🎉 *Your Fan Passport is being prepared, ${name}!*\n\n` +
       `🆔 Fan ID: \`${fanId}\`\n` +
@@ -59,7 +59,7 @@ export const TRANSLATIONS: Record<Language, Record<string, string | ((...args: a
     invalid_name: `⚠️ ദയവായി സാധുവായ ഒരു പേര് നൽകുക (2-40 അക്ഷരങ്ങൾ, അക്ഷരങ്ങൾ മാത്രം).\n\nനിങ്ങളുടെ പേരെന്താണ്?`,
     greet_name: (name: string) => `കണ്ടുമുട്ടിയതിൽ സന്തോഷം, ${name}! 🙌\n\nലോകകപ്പ് 2026-ൽ നിങ്ങൾ ഏത് രാജ്യത്തെയാണ് പിന്തുണയ്ക്കുന്നത്?`,
     choose_country: 'രാജ്യം തിരഞ്ഞെടുക്കുക',
-    photo_prompt: (flag: string, country: string) => `${flag} *${country}* — ചാമ്പ്യന്മാരുടെ ആരാധകൻ.\n\nനിങ്ങളുടെ ഫാൻ പാസ്‌പോർട്ടിലേക്ക് ഫോട്ടോ ചേർക്കണോ?\nഫോട്ടോ ചേർക്കുന്നത് നിങ്ങളുടെ മാച്ച് പോസ്റ്ററുകൾ കൂടുതൽ മനോഹരമാക്കും.\n\n_(ഇപ്പോൾ ഒഴിവാക്കി പിന്നീട് ചേർക്കാവുന്നതാണ്)_`,
+    photo_prompt: (flag: string, country: string) => `${flag} *${country}* — ചാമ്പ്യന്മാരുടെ ആരാധകൻ.\n\n📷 *ഫോട്ടോ ചേർക്കാൻ:* മെസ്സേജ് ബോക്സിന് അടുത്തുള്ള പേപ്പർക്ലിപ്പ് 📎 അല്ലെങ്കിൽ ക്യാമറ ചിഹ്നം ടാപ്പ് ചെയ്ത് ഫോട്ടോ സെൻഡ് ചെയ്യുക.\n\nഅല്ലെങ്കിൽ ഇപ്പോൾ ഒഴിവാക്കി പിന്നീട് ചേർക്കാവുന്നതാണ്!`,
     onboarding_preparing: (name: string, fanId: string, flag: string, country: string, referralCode: string) =>
       `🎉 *നിങ്ങളുടെ ഫാൻ പാസ്‌പോർട്ട് തയ്യാറാവുന്നു, ${name}!*\n\n` +
       `🆔 ഫാൻ ഐഡി: \`${fanId}\`\n` +
@@ -112,7 +112,7 @@ export const TRANSLATIONS: Record<Language, Record<string, string | ((...args: a
     invalid_name: `⚠️ الرجاء إدخال اسم صحيح (من 2 إلى 40 حرفاً، حروف فقط).\n\nما هو اسمك؟`,
     greet_name: (name: string) => `سررت بلقائك يا ${name}! 🙌\n\nما هو المنتخب الذي تشجعه في كأس العالم 2026؟`,
     choose_country: 'اختر المنتخب',
-    photo_prompt: (flag: string, country: string) => `${flag} *${country}* — مشجع الأبطال.\n\nهل ترغب في إضافة صورتك الشخصية على جواز المشجع الخاص بك؟\nصورتك تجعل بوسترات المباريات مخصصة وأكثر تميزاً عند مشاركتها.\n\n_(يمكنك التخطي والإضافة لاحقاً)_`,
+    photo_prompt: (flag: string, country: string) => `${flag} *${country}* — مشجع الأبطال.\n\n📷 *لإضافة صورة:* اضغط على أيقونة المشبك 📎 أو الكاميرا بجوار حقل إدخال الرسالة وأرسل صورة.\n\nوإلا، يمكنك تخطي ذلك وإضافتها لاحقاً!`,
     onboarding_preparing: (name: string, fanId: string, flag: string, country: string, referralCode: string) =>
       `🎉 *جاري إعداد جواز المشجع الخاص بك يا ${name}!*\n\n` +
       `🆔 رقم الهوية: \`${fanId}\`\n` +

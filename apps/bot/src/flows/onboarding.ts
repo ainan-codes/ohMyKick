@@ -110,7 +110,6 @@ export async function handleOnboardingCountry(
         kind: 'buttons',
         text: getTranslation(user.language, 'photo_prompt', country.flag, country.name),
         buttons: [
-          { id: 'photo_send', label: '📸 Send My Photo' },
           { id: 'photo_skip', label: '⏭ Skip for Now' },
         ],
       },
