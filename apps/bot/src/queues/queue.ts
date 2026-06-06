@@ -55,9 +55,14 @@ async function processPosterJob(job: { data: any }) {
   let posterApiUrl: string;
 
   if (type === 'passport') {
+    const userCountry = user.country_code ? COUNTRIES[user.country_code] : null;
+
     const params = new URLSearchParams({
       name: user.name,
       countryName: user.country_name,
+      countryCode: user.country_code ?? '',
+      primaryColor: userCountry?.primaryColor ?? '#f0b429',
+      secondaryColor: userCountry?.secondaryColor ?? '#ffd166',
       flagEmoji: user.country_flag_emoji,
       fanId: user.fan_id,
       fanLevel: user.fan_level,

@@ -1,5 +1,6 @@
 import { ImageResponse } from 'next/og';
 import { NextRequest } from 'next/server';
+import { getTeamBackground } from '../teamPatterns';
 
 export const runtime = 'edge';
 
@@ -17,6 +18,9 @@ export async function GET(request: NextRequest) {
   const referralCount = searchParams.get('referralCount') ?? '0';
   const referralCode = searchParams.get('referralCode') ?? '';
   const photoUrl = searchParams.get('photoUrl') ?? null;
+  const countryCode = searchParams.get('countryCode') ?? '';
+  const primaryColor = searchParams.get('primaryColor') ?? '#080810';
+  const secondaryColor = searchParams.get('secondaryColor') ?? '#0a0c1e';
 
   // Level badge config
   const levelBadge = fanLevel === 'LEGEND'
@@ -31,15 +35,39 @@ export async function GET(request: NextRequest) {
         style={{
           width: 1080,
           height: 1920,
-          background: 'linear-gradient(175deg, #05060f 0%, #0a0c1e 40%, #080810 100%)',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           padding: '90px 80px',
           position: 'relative',
           fontFamily: 'sans-serif',
+          overflow: 'hidden',
         }}
       >
+        {/* Dynamic Country Background */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          display: 'flex',
+          opacity: 0.85,
+        }}>
+          {getTeamBackground(countryCode, 'right', primaryColor, secondaryColor)}
+        </div>
+        
+        {/* Dark overlay to ensure text readability */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.8) 100%)',
+          display: 'flex',
+        }} />
+
         {/* Gold accent top line */}
         <div style={{
           position: 'absolute',
