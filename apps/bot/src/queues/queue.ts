@@ -134,6 +134,7 @@ async function processPosterJob(job: { data: any }) {
   }
 
   // Download poster PNG
+  console.log(`[Queue] Requesting poster API URL: ${posterApiUrl}`);
   const response = await fetch(posterApiUrl);
   if (!response.ok) throw new Error(`Poster API error: ${response.status}`);
   const imageBuffer = await response.arrayBuffer();
@@ -335,10 +336,20 @@ notifyWorker.on('failed', (job, err) => {
 // ─── Override queue add methods to support Redis bypass local dev mode ─
 const originalPosterAdd = posterQueue.add.bind(posterQueue);
 posterQueue.add = (async (name: string, data: any, opts: any) => {
-  if (redis.status === 'ready') {
+  let useRedis = false;
+  try {
+    if (redis.status === 'ready') {
+      await redis.ping();
+      useRedis = true;
+    }
+  } catch (err: any) {
+    console.warn(`[Queue Bypass] Redis ping failed: ${err.message}. Falling back to synchronous processing.`);
+  }
+
+  if (useRedis) {
     return originalPosterAdd(name, data, opts);
   } else {
-    console.log(`[Queue Bypass] Redis offline. Processing poster synchronous-in-process for user ${data.userId}...`);
+    console.log(`[Queue Bypass] Redis offline/errored. Processing poster synchronous-in-process for user ${data.userId}...`);
     setTimeout(() => {
       processPosterJob({ data }).catch((err) => {
         console.error(`[Queue Bypass] Synchronous poster job failed:`, err.message);
@@ -350,10 +361,20 @@ posterQueue.add = (async (name: string, data: any, opts: any) => {
 
 const originalNotifyAdd = notifyQueue.add.bind(notifyQueue);
 notifyQueue.add = (async (name: string, data: any, opts: any) => {
-  if (redis.status === 'ready') {
+  let useRedis = false;
+  try {
+    if (redis.status === 'ready') {
+      await redis.ping();
+      useRedis = true;
+    }
+  } catch (err: any) {
+    console.warn(`[Queue Bypass] Redis ping failed: ${err.message}. Falling back to synchronous processing.`);
+  }
+
+  if (useRedis) {
     return originalNotifyAdd(name, data, opts);
   } else {
-    console.log(`[Queue Bypass] Redis offline. Sending notification synchronous-in-process to user ${data.userId}...`);
+    console.log(`[Queue Bypass] Redis offline/errored. Sending notification synchronous-in-process to user ${data.userId}...`);
     setTimeout(() => {
       processNotifyJob({ data }).catch((err) => {
         console.error(`[Queue Bypass] Synchronous notify job failed:`, err.message);
