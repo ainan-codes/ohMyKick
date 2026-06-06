@@ -56,18 +56,22 @@ const start = async () => {
     console.log(`\n🚀 OhMyKick Bot Server running on port ${PORT}`);
     console.log(`   Health: http://localhost:${PORT}/health`);
 
-    // Set up Telegram webhook if token is available
+    // Set up Telegram webhook/polling if token is available
     const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     const RAILWAY_URL = process.env.RAILWAY_PUBLIC_DOMAIN;
 
-    if (TG_TOKEN && RAILWAY_URL && process.env.NODE_ENV === 'production') {
+    if (TG_TOKEN) {
       const { bot } = await import('./telegram/sender.js');
-      const webhookUrl = `https://${RAILWAY_URL}/webhook/telegram`;
-      await bot.telegram.setWebhook(webhookUrl);
-      console.log(`   Telegram webhook set: ${webhookUrl}`);
-    } else if (TG_TOKEN) {
-      console.log('   ℹ️  Set RAILWAY_PUBLIC_DOMAIN to register Telegram webhook automatically');
-      console.log('   ℹ️  Or manually: POST https://api.telegram.org/bot<TOKEN>/setWebhook');
+      if (RAILWAY_URL && process.env.NODE_ENV === 'production') {
+        const webhookUrl = `https://${RAILWAY_URL}/webhook/telegram`;
+        await bot.telegram.setWebhook(webhookUrl);
+        console.log(`   Telegram webhook set: ${webhookUrl}`);
+      } else {
+        // Delete webhook first to avoid conflict, then launch polling
+        await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+        bot.launch();
+        console.log('   🚀 Telegraf running in long-polling mode (local testing)');
+      }
     }
   } catch (err) {
     app.log.error(err);

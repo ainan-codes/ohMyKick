@@ -17,11 +17,29 @@ import { logNotification, trackEvent } from '../utils/analytics.js';
 dotenv.config();
 
 const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
-export const redis = new Redis(redisUrl, { maxRetriesPerRequest: null });
+export const redis = new Redis(redisUrl, {
+  maxRetriesPerRequest: null,
+  retryStrategy(times) {
+    // Backoff reconnect strategy (1s, 2s, 3s, ... max 10s)
+    return Math.min(times * 1000, 10000);
+  }
+});
+
+redis.on('error', (err) => {
+  // Capture error to avoid unhandled exception logs
+  console.warn(`[Queue Redis] Connection issue: ${err.message}`);
+});
 
 // ─── Queue definitions ────────────────────────────────────────
 export const posterQueue = new Queue('poster-generation', { connection: redis as any });
 export const notifyQueue = new Queue('notifications', { connection: redis as any });
+
+posterQueue.on('error', (err) => {
+  console.warn(`[Queue posterQueue] Redis issue: ${err.message}`);
+});
+notifyQueue.on('error', (err) => {
+  console.warn(`[Queue notifyQueue] Redis issue: ${err.message}`);
+});
 
 // ─── Poster generation worker ─────────────────────────────────
 const posterWorker = new Worker(
@@ -283,6 +301,14 @@ const notifyWorker = new Worker(
   },
   { connection: redis as any, concurrency: 50 }
 );
+
+posterWorker.on('error', (err) => {
+  console.warn(`[Worker posterWorker] Redis issue: ${err.message}`);
+});
+
+notifyWorker.on('error', (err) => {
+  console.warn(`[Worker notifyWorker] Redis issue: ${err.message}`);
+});
 
 posterWorker.on('failed', (job, err) => {
   console.error(`[posterWorker] Job ${job?.id} failed:`, err.message);

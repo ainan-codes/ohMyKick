@@ -18,7 +18,7 @@ const SAMPLE_POSTERS = [
     label: 'Pre-Match',
     badge: 'Before Kickoff',
     badgeColor: '#3b82f6',
-    url: `${POSTER_BASE}/api/posters/prematch?name=Ainan&flagEmoji=%F0%9F%87%AE%F0%9F%87%B3&countryName=India&homeTeam=Argentina&awayTeam=France&homeFlag=%F0%9F%87%A6%F0%9F%87%B7&awayFlag=%F0%9F%87%AB%F0%9F%87%B7&predictionHome=2&predictionAway=1&stage=GROUP A&matchDate=Jun 14&kickoffTime=9:00 PM IST&referralCode=AIN7X2&homePrimary=%2374ACDF&awayPrimary=%23002395`,
+    url: `${POSTER_BASE}/api/posters/prematch?name=Ainan&flagEmoji=%F0%9F%87%AE%F0%9F%87%B3&countryName=India&homeTeam=Argentina&awayTeam=France&homeFlag=%F0%9F%87%A6%F0%9F%87%B7&awayFlag=%F0%9F%87%AB%F0%9F%87%B7&predictionHome=2&predictionAway=1&stage=GROUP%20A&matchDate=Jun%2014&kickoffTime=9:00%20PM%20IST&referralCode=AIN7X2&homePrimary=%2374ACDF&awayPrimary=%23002395`,
   },
   {
     label: 'YOU CALLED IT',
