@@ -1,7 +1,7 @@
 import styles from './page.module.css';
 
 const WA_NUMBER = process.env.NEXT_PUBLIC_WA_NUMBER ?? '919999999999';
-const TG_BOT_USERNAME = process.env.NEXT_PUBLIC_TG_BOT_USERNAME ?? 'ohMyKickbot';
+const TG_BOT_USERNAME = process.env.NEXT_PUBLIC_TG_BOT_USERNAME ?? 'OhMyKickbot';
 
 // Live poster API — built on Vercel Edge, served instantly
 const POSTER_BASE = process.env.NEXT_PUBLIC_POSTER_BASE ?? '';
