@@ -42,12 +42,12 @@ export async function GET(request: NextRequest) {
           position: 'absolute',
           inset: 0,
           background: 'rgba(0,0,0,0.55)',
+          display: 'flex',
         }} />
 
         {/* Content */}
         <div style={{
           position: 'relative',
-          zIndex: 1,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -61,6 +61,7 @@ export async function GET(request: NextRequest) {
             letterSpacing: 5,
             marginBottom: 80,
             textTransform: 'uppercase',
+            display: 'flex',
           }}>
             {`${stage} · ${matchDate}`}
           </div>
@@ -81,8 +82,8 @@ export async function GET(request: NextRequest) {
               gap: 20,
               flex: 1,
             }}>
-              <div style={{ fontSize: 140 }}>{homeFlag}</div>
-              <div style={{ fontSize: 48, fontWeight: 800, color: '#fff', textAlign: 'center', letterSpacing: 2 }}>
+              <div style={{ fontSize: 140, display: 'flex' }}>{homeFlag}</div>
+              <div style={{ fontSize: 48, fontWeight: 800, color: '#fff', textAlign: 'center', letterSpacing: 2, display: 'flex' }}>
                 {homeTeam.toUpperCase()}
               </div>
             </div>
@@ -94,7 +95,7 @@ export async function GET(request: NextRequest) {
               alignItems: 'center',
               gap: 8,
             }}>
-              <div style={{ fontSize: 48, fontWeight: 900, color: 'rgba(255,255,255,0.3)', letterSpacing: 4 }}>VS</div>
+              <div style={{ fontSize: 48, fontWeight: 900, color: 'rgba(255,255,255,0.3)', letterSpacing: 4, display: 'flex' }}>VS</div>
             </div>
 
             {/* Away team */}
@@ -105,8 +106,8 @@ export async function GET(request: NextRequest) {
               gap: 20,
               flex: 1,
             }}>
-              <div style={{ fontSize: 140 }}>{awayFlag}</div>
-              <div style={{ fontSize: 48, fontWeight: 800, color: '#fff', textAlign: 'center', letterSpacing: 2 }}>
+              <div style={{ fontSize: 140, display: 'flex' }}>{awayFlag}</div>
+              <div style={{ fontSize: 48, fontWeight: 800, color: '#fff', textAlign: 'center', letterSpacing: 2, display: 'flex' }}>
                 {awayTeam.toUpperCase()}
               </div>
             </div>
@@ -118,8 +119,9 @@ export async function GET(request: NextRequest) {
             color: 'rgba(255,255,255,0.5)',
             marginBottom: 80,
             letterSpacing: 3,
+            display: 'flex',
           }}>
-            🕐 {kickoffTime}
+            {`Local time: 🕐 ${kickoffTime}`}
           </div>
 
           {/* Prediction box */}
@@ -135,7 +137,7 @@ export async function GET(request: NextRequest) {
             gap: 24,
             marginBottom: 60,
           }}>
-            <div style={{ fontSize: 28, color: 'rgba(255,255,255,0.5)', letterSpacing: 5, textTransform: 'uppercase' }}>
+            <div style={{ fontSize: 28, color: 'rgba(255,255,255,0.5)', letterSpacing: 5, textTransform: 'uppercase', display: 'flex' }}>
               MY PREDICTION
             </div>
 
@@ -144,9 +146,9 @@ export async function GET(request: NextRequest) {
               alignItems: 'center',
               gap: 40,
             }}>
-              <div style={{ fontSize: 100, fontWeight: 900, color: '#fff' }}>{predictionHome}</div>
-              <div style={{ fontSize: 56, color: 'rgba(255,255,255,0.3)', fontWeight: 300 }}>—</div>
-              <div style={{ fontSize: 100, fontWeight: 900, color: '#fff' }}>{predictionAway}</div>
+              <div style={{ fontSize: 100, fontWeight: 900, color: '#fff', display: 'flex' }}>{predictionHome}</div>
+              <div style={{ fontSize: 56, color: 'rgba(255,255,255,0.3)', fontWeight: 300, display: 'flex' }}>—</div>
+              <div style={{ fontSize: 100, fontWeight: 900, color: '#fff', display: 'flex' }}>{predictionAway}</div>
             </div>
 
             <div style={{
@@ -156,33 +158,34 @@ export async function GET(request: NextRequest) {
               fontSize: 32,
               color: 'rgba(255,255,255,0.4)',
             }}>
-              <span>{homeTeam}</span>
-              <span>{awayTeam}</span>
+              <span style={{ display: 'flex' }}>{homeTeam}</span>
+              <span style={{ display: 'flex' }}>{awayTeam}</span>
             </div>
           </div>
 
           {/* Predicted by */}
-          <div style={{ fontSize: 36, color: 'rgba(255,255,255,0.7)', marginBottom: 12 }}>
+          <div style={{ fontSize: 36, color: 'rgba(255,255,255,0.7)', marginBottom: 12, display: 'flex' }}>
             Predicted by
           </div>
-          <div style={{ fontSize: 72, fontWeight: 900, color: '#fff', letterSpacing: 2, marginBottom: 16 }}>
+          <div style={{ fontSize: 72, fontWeight: 900, color: '#fff', letterSpacing: 2, marginBottom: 16, display: 'flex' }}>
             {userName.toUpperCase()}
           </div>
-          <div style={{ fontSize: 40, marginBottom: 'auto' }}>
+          <div style={{ fontSize: 40, marginBottom: 'auto', display: 'flex' }}>
             {`${userFlag} ${userCountry} Supporter`}
           </div>
 
           {/* Referral */}
-          {referralCode && (
+          {referralCode ? (
             <div style={{
               fontSize: 30,
               color: 'rgba(255,255,255,0.3)',
               letterSpacing: 3,
               marginBottom: 10,
+              display: 'flex',
             }}>
               {`ohmykick.com/${referralCode}`}
             </div>
-          )}
+          ) : null}
 
           <div style={{
             width: '100%',
@@ -191,7 +194,7 @@ export async function GET(request: NextRequest) {
             display: 'flex',
             justifyContent: 'center',
           }}>
-            <div style={{ fontSize: 28, color: 'rgba(255,255,255,0.2)', letterSpacing: 8 }}>
+            <div style={{ fontSize: 28, color: 'rgba(255,255,255,0.2)', letterSpacing: 8, display: 'flex' }}>
               OHMYKICK
             </div>
           </div>
