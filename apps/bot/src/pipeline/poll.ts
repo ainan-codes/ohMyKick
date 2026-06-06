@@ -10,6 +10,9 @@ const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY ?? '';
 const API_FOOTBALL_HOST = process.env.API_FOOTBALL_HOST ?? 'v3.football.api-sports.io';
 const IS_MOCK = !API_FOOTBALL_KEY || process.env.NODE_ENV === 'development';
 
+// api-sports.io direct API uses x-apisports-key header (NOT RapidAPI)
+const API_BASE_URL = `https://${API_FOOTBALL_HOST}`;
+
 export async function pollActiveMatches(): Promise<void> {
   if (IS_MOCK) {
     console.log('[Poll] Running in MOCK mode — no live API calls');
@@ -27,11 +30,10 @@ export async function pollActiveMatches(): Promise<void> {
   for (const match of matches) {
     try {
       const response = await axios.get(
-        `https://${API_FOOTBALL_HOST}/fixtures?id=${match.api_match_id}`,
+        `${API_BASE_URL}/fixtures?id=${match.api_match_id}`,
         {
           headers: {
-            'x-rapidapi-key': API_FOOTBALL_KEY,
-            'x-rapidapi-host': API_FOOTBALL_HOST,
+            'x-apisports-key': API_FOOTBALL_KEY,
           },
           timeout: 10000,
         }
