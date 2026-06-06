@@ -311,66 +311,91 @@
   line-height: 1.6;
 }
 
-/* POSTERS PREVIEW */
-.postersSection {
-  position: relative;
-  z-index: 1;
-  padding: var(--space-3xl) 24px;
-  background: var(--color-bg-card);
-  border-top: 1px solid var(--color-border);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.postersSection .sectionTitle {
-  margin-bottom: 12px;
-}
-
-.postersSection .sectionSubtitle {
-  margin-bottom: 56px;
-}
-
-.posterGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+/* POSTER STRIP — Live images */
+.posterStrip {
+  display: flex;
   gap: 20px;
-  max-width: 1000px;
+  overflow-x: auto;
+  padding: 12px 8px 32px;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  max-width: 1200px;
   margin: 0 auto;
+  /* Hide scrollbar but keep scrollable */
+  scrollbar-width: none;
+}
+.posterStrip::-webkit-scrollbar {
+  display: none;
 }
 
-.posterCard {
-  aspect-ratio: 9 / 16;
-  max-height: 360px;
-  border-radius: var(--radius-lg);
+.posterWrapper {
+  flex: 0 0 auto;
+  width: 220px;
+  scroll-snap-align: start;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  border: 1px solid rgba(255,255,255,0.06);
-  transition: all 0.3s ease;
-  cursor: default;
+  gap: 10px;
 }
 
-.posterCard:hover {
-  transform: translateY(-6px) scale(1.02);
-  box-shadow: var(--shadow-card);
+.posterBadge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid;
+  background: rgba(0,0,0,0.3);
+  white-space: nowrap;
 }
 
-.posterIcon {
-  font-size: 48px;
+.posterImg {
+  width: 220px;
+  height: 390px;
+  object-fit: cover;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: all 0.35s ease;
+  display: block;
+  background: #111;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+}
+
+.posterImg:hover {
+  transform: translateY(-8px) scale(1.03);
+  box-shadow: 0 24px 60px rgba(0,0,0,0.7);
+  border-color: rgba(255,255,255,0.15);
 }
 
 .posterLabel {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
   text-align: center;
   letter-spacing: 0.5px;
 }
 
-.posterDim {
-  font-size: 11px;
-  color: rgba(255,255,255,0.3);
+.posterNote {
+  text-align: center;
+  font-size: 12px;
+  color: rgba(255,255,255,0.2);
   font-family: var(--font-mono);
+  letter-spacing: 1px;
+  margin-top: 8px;
+}
+
+/* Keep old posterCard/posterIcon/posterDim for backward compat */
+.posterCard {
+  display: none;
+}
+.posterIcon {
+  display: none;
+}
+.posterDim {
+  display: none;
+}
+.posterGrid {
+  display: none;
 }
 
 /* STATS */
