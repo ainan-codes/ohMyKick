@@ -73,6 +73,48 @@ export function getTeamBackground(
     );
   }
 
+  if (code === 'PT') {
+    // Portugal - Split roughly 40/60
+    return (
+      <div style={{ display: 'flex', width: '100%', height: '100%' }}>
+        <div style={{ flex: 4, backgroundColor: primary }} />
+        <div style={{ flex: 6, backgroundColor: secondary }} />
+      </div>
+    );
+  }
+
+  if (code === 'DE') {
+    // Germany - Horizontal stripes (black, red, yellow)
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
+        <div style={{ flex: 1, backgroundColor: primary }} />
+        <div style={{ flex: 1, backgroundColor: secondary }} />
+        <div style={{ flex: 1, backgroundColor: '#FFCC00' }} />
+      </div>
+    );
+  }
+
+  if (code === 'ES') {
+    // Spain - Thick horizontal yellow stripe
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
+        <div style={{ flex: 1, backgroundColor: primary }} />
+        <div style={{ flex: 1.5, backgroundColor: secondary }} />
+        <div style={{ flex: 1, backgroundColor: primary }} />
+      </div>
+    );
+  }
+
+  if (code === 'GB_ENG') {
+    // England - Red cross on white background
+    return (
+      <div style={{ display: 'flex', width: '100%', height: '100%', backgroundColor: secondary, position: 'relative', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'absolute', top: 0, bottom: 0, width: '20%', backgroundColor: primary }} />
+        <div style={{ position: 'absolute', left: 0, right: 0, height: '20%', backgroundColor: primary }} />
+      </div>
+    );
+  }
+
   // Default: solid primary color
   return (
     <div style={{ 
