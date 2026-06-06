@@ -3,6 +3,7 @@ import {
   updateConversationState,
   updateUser,
   getUserStats,
+  updateStreak,
 } from '../db/users.js';
 import {
   getUpcomingMatches,
@@ -15,6 +16,7 @@ import {
   getUserPredictionForMatch,
   createPrediction,
   calculateResultType,
+  getUserRecentPredictions,
 } from '../db/predictions.js';
 import { posterQueue } from '../queues/queue.js';
 import { parseScore, validateScoreConsistency } from '../utils/score-parser.js';
@@ -81,16 +83,55 @@ export async function startPredictionFlow(user: User): Promise<BotResponse> {
     };
   }
 
-  if (predictableMatches.length === 1) {
-    // Only one match — go straight to winner selection
-    const match = predictableMatches[0];
+  // Filter out matches the user has already predicted
+  const predictions = await Promise.all(
+    predictableMatches.map(async (m) => {
+      const pred = await getUserPredictionForMatch(user.id, m.id);
+      return { match: m, prediction: pred };
+    })
+  );
+
+  const unpredicted = predictions.filter((p) => !p.prediction).map((p) => p.match);
+  const predicted = predictions.filter((p) => p.prediction);
+
+  if (unpredicted.length === 0) {
+    await updateConversationState(user.id, 'IDLE', {
+      pending_match_id: null,
+      pending_winner: null,
+      state_retries: 0,
+    });
+
+    let text = `✅ *You've predicted all upcoming matches!* ⚽\n\n`;
+    for (const p of predicted) {
+      if (!p.prediction) continue;
+      text += `• *${p.match.home_flag_emoji ?? ''} ${p.match.home_team} vs ${p.match.away_team} ${p.match.away_flag_emoji ?? ''}*\n` +
+              `  Your prediction: *${p.prediction.predicted_home_score} – ${p.prediction.predicted_away_score}*\n\n`;
+    }
+    text += `Predictions lock at kickoff. We'll send your matchday poster soon! 📸`;
+    return {
+      messages: [
+        {
+          kind: 'buttons',
+          text: text.trim(),
+          buttons: [
+            { id: 'view_passport', label: '🎫 My Passport' },
+            { id: 'my_predictions', label: '📋 My Predictions' },
+          ],
+        },
+      ],
+    };
+  }
+
+  if (unpredicted.length === 1) {
+    // Only one unpredicted match — go straight to winner selection
+    const match = unpredicted[0];
     await updateConversationState(user.id, 'PREDICTION_WINNER', {
       pending_match_id: match.id,
     });
     return buildWinnerSelectionMessage(match, user);
   }
 
-  // Multiple matches — show selection list
+  // Multiple unpredicted matches — show selection list
   await updateConversationState(user.id, 'PREDICTION_MATCH_SELECT');
   return {
     messages: [
@@ -101,9 +142,9 @@ export async function startPredictionFlow(user: User): Promise<BotResponse> {
         sections: [
           {
             title: 'AVAILABLE MATCHES',
-            rows: predictableMatches.map((m) => ({
+            rows: unpredicted.map((m) => ({
               id: `match_${m.id}`,
-              title: `${m.home_flag_emoji ?? ''} ${m.home_team} vs ${m.away_team} ${m.away_flag_emoji ?? ''}`.slice(0, 24),
+              title: safeSlice(`${m.home_flag_emoji ?? ''} ${m.home_team} vs ${m.away_team} ${m.away_flag_emoji ?? ''}`, 24),
               description: formatKickoffTime(m),
             })),
           },
@@ -218,8 +259,38 @@ export async function handleScoreInput(
   });
 
   if (!prediction) {
+    const existing = await getUserPredictionForMatch(user.id, match.id);
+    await updateConversationState(user.id, 'IDLE', {
+      pending_match_id: null,
+      pending_winner: null,
+      state_retries: 0,
+    });
+
+    if (existing) {
+      return {
+        messages: [
+          {
+            kind: 'text',
+            text: getTranslation(user.language, 'already_predicted', existing.predicted_home_score, existing.predicted_away_score),
+          },
+        ],
+      };
+    }
+
     return {
-      messages: [{ kind: 'text', text: '⚠️ Error saving prediction.' }],
+      messages: [{ kind: 'text', text: '⚠️ Error saving prediction. Please try again.' }],
+    };
+  }
+
+  // Phase 2: If score > 0, ask for First Goal Scorer
+  if (finalScore.home > 0 || finalScore.away > 0) {
+    await updateConversationState(user.id, 'PREDICTION_FIRST_SCORER', {
+      pending_match_id: match.id,
+      pending_winner: null,
+      state_retries: 0,
+    });
+    return {
+      messages: [{ kind: 'text', text: 'Who do you think will score the FIRST goal of the match?\n\n(Type the player name, or type "skip" to ignore)' }]
     };
   }
 
@@ -229,6 +300,7 @@ export async function handleScoreInput(
   });
 
   // Update streak and clear state
+  await updateStreak(user.id);
   await updateConversationState(user.id, 'IDLE', {
     pending_match_id: null,
     pending_winner: null,
@@ -316,9 +388,9 @@ function buildWinnerSelectionMessage(match: Match, user: User): BotResponse {
           `📅 ${formatKickoffTime(match)} | ${match.stage.replace('_', ' ')}\n\n` +
           getTranslation(user.language, 'who_wins'),
         buttons: [
-          { id: 'winner_home', label: `${match.home_flag_emoji ?? ''} ${match.home_team}`.slice(0, 20) },
+          { id: 'winner_home', label: safeSlice(`${match.home_flag_emoji ?? ''} ${match.home_team}`, 20) },
           { id: 'winner_draw', label: getTranslation(user.language, 'draw') },
-          { id: 'winner_away', label: `${match.away_flag_emoji ?? ''} ${match.away_team}`.slice(0, 20) },
+          { id: 'winner_away', label: safeSlice(`${match.away_flag_emoji ?? ''} ${match.away_team}`, 20) },
         ],
       },
     ],
@@ -331,4 +403,120 @@ function getTimeUntilKickoff(kickoffAt: string): string {
   const minutes = Math.floor((ms % 3600000) / 60000);
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes} minutes`;
+}
+
+function safeSlice(str: string, limit: number): string {
+  const chars = Array.from(str);
+  if (chars.length <= limit) return str;
+  return chars.slice(0, limit).join('');
+}
+
+export async function handleMyPredictionsRequest(user: User): Promise<BotResponse> {
+  const predictions = await getUserRecentPredictions(user.id, 5);
+
+  if (predictions.length === 0) {
+    return {
+      messages: [
+        {
+          kind: 'buttons',
+          text: `📋 *YOUR PREDICTIONS*\n\nYou haven't made any predictions yet!\n\nClick "Predict Now" below to get started.`,
+          buttons: [{ id: 'predict_now', label: '⚽ Predict Now' }],
+        },
+      ],
+    };
+  }
+
+  let text = `📋 *YOUR RECENT PREDICTIONS*\n\n`;
+
+  for (const p of predictions) {
+    const match = await getMatchById(p.match_id);
+    if (!match) continue;
+
+    const matchName = `${match.home_flag_emoji ?? ''} ${match.home_team} vs ${match.away_team} ${match.away_flag_emoji ?? ''}`;
+    const predictionText = `${p.predicted_home_score} – ${p.predicted_away_score}`;
+
+    let statusIcon = '⏳';
+    let statusText = 'Pending kickoff';
+
+    if (p.is_locked) {
+      statusIcon = '🔒';
+      statusText = 'Locked';
+    }
+
+    if (p.result_type) {
+      if (p.result_type === 'PERFECT') {
+        statusIcon = '✅🏆';
+        statusText = `Perfect! (+${p.points_earned} pts)`;
+      } else if (p.result_type === 'CORRECT_WINNER') {
+        statusIcon = '✅⚽';
+        statusText = `Correct winner (+${p.points_earned} pts)`;
+      } else {
+        statusIcon = '❌';
+        statusText = `Wrong (+0 pts)`;
+      }
+    }
+
+    text += `• *${matchName}*\n  Your pick: *${predictionText}* · ${statusIcon} _${statusText}_\n\n`;
+  }
+
+  return {
+    messages: [
+      {
+        kind: 'buttons',
+        text: text.trim(),
+        buttons: [
+          { id: 'predict_now', label: '⚽ Predict Match' },
+          { id: 'view_passport', label: '🎫 My Passport' },
+        ],
+      },
+    ],
+  };
+}
+export async function handleFirstScorerInput(user: User, text: string): Promise<BotResponse> {
+  const matchId = user.pending_match_id;
+  if (!matchId) {
+    return { messages: [{ kind: 'text', text: getTranslation(user.language, 'invalid_session') }] };
+  }
+
+  const scorerName = text.toLowerCase().trim() === 'skip' ? null : text;
+
+  if (scorerName) {
+    const { error } = await supabase
+      .from('predictions')
+      .update({ predicted_first_scorer: scorerName })
+      .eq('user_id', user.id)
+      .eq('match_id', matchId);
+    
+    if (error) {
+      console.error('Failed to update first goal scorer', error);
+    }
+  }
+
+  trackEvent(user.id, 'prediction_completed', {
+    matchId: matchId,
+    resultType: 'score_with_scorer',
+  });
+
+  await updateStreak(user.id);
+
+  await updateConversationState(user.id, 'IDLE', {
+    pending_match_id: null,
+    pending_winner: null,
+    state_retries: 0,
+  });
+
+  await posterQueue.add('prematch-poster', {
+    type: 'prematch',
+    userId: user.id,
+    matchId: matchId,
+  });
+
+  return {
+    messages: [
+      {
+        kind: 'text',
+        text: '🔒 Locked in!\n\nYour matchday poster is on its way... 📸',
+      },
+    ],
+  };
 }

@@ -11,12 +11,15 @@ import {
   handleMatchSelection,
   handleWinnerSelection,
   handleScoreInput,
+  handleMyPredictionsRequest,
   type BotResponse,
   type ChannelMessage,
 } from '../flows/prediction.js';
 import { handlePassportRequest } from '../flows/passport.js';
 import { handleReferralRequest } from '../flows/referral.js';
 import { getTranslation } from '../utils/i18n.js';
+import { handleLeaderboardRequest } from '../flows/leaderboard.js';
+import { handleLeagueMenuRequest, handleLeagueAction, handleCreateLeague, handleJoinLeague } from '../flows/league.js';
 
 // Global keywords that work in any state
 const PREDICT_KEYWORDS = ['predict', 'prediction', 'predictions'];
@@ -25,6 +28,8 @@ const REFERRAL_KEYWORDS = ['refer', 'invite', 'referral', 'share'];
 const MENU_KEYWORDS = ['hi', 'hello', 'hey', 'start', 'help', 'menu'];
 const STREAK_KEYWORDS = ['streak'];
 const LANGUAGE_KEYWORDS = ['lang', 'language', 'ഭാഷ', 'اللغة'];
+const LEADERBOARD_KEYWORDS = ['rank', 'leaderboard', 'standings', 'country war'];
+const LEAGUE_KEYWORDS = ['league', 'leagues', 'friend league'];
 
 export async function processMessage(
   user: User,
@@ -47,6 +52,10 @@ export async function processMessage(
     };
   }
 
+  if (['create_league', 'join_league'].includes(msg.text)) {
+    return handleLeagueAction(user, msg.text);
+  }
+
   const text = msg.text?.toLowerCase().trim() ?? '';
   const cleanText = text.startsWith('/') ? text.slice(1) : text;
   const state = user.conversation_state;
@@ -57,23 +66,84 @@ export async function processMessage(
       return startPredictionFlow(user);
     }
 
+    if (msg.text === 'my_predictions') {
+      await updateConversationState(user.id, 'IDLE', {
+        pending_match_id: null,
+        pending_winner: null,
+        state_retries: 0,
+      });
+      return handleMyPredictionsRequest(user);
+    }
+
     if (PASSPORT_KEYWORDS.some((k) => cleanText.startsWith(k)) || msg.text === 'view_passport') {
+      await updateConversationState(user.id, 'IDLE', {
+        pending_match_id: null,
+        pending_winner: null,
+        state_retries: 0,
+      });
       return handlePassportRequest(user);
     }
 
     if (REFERRAL_KEYWORDS.some((k) => cleanText.startsWith(k)) || msg.text === 'referral_info') {
+      await updateConversationState(user.id, 'IDLE', {
+        pending_match_id: null,
+        pending_winner: null,
+        state_retries: 0,
+      });
       return handleReferralRequest(user);
     }
 
-    if (STREAK_KEYWORDS.some((k) => cleanText === k)) {
+    if (STREAK_KEYWORDS.some((k) => cleanText === k) || msg.text === 'streak_check') {
+      await updateConversationState(user.id, 'IDLE', {
+        pending_match_id: null,
+        pending_winner: null,
+        state_retries: 0,
+      });
       return buildStreakResponse(user);
     }
 
+    if (msg.text === 'how_it_works') {
+      await updateConversationState(user.id, 'IDLE', {
+        pending_match_id: null,
+        pending_winner: null,
+        state_retries: 0,
+      });
+      return buildHowItWorksResponse(user);
+    }
+
     if (LANGUAGE_KEYWORDS.some((k) => cleanText === k)) {
+      await updateConversationState(user.id, 'IDLE', {
+        pending_match_id: null,
+        pending_winner: null,
+        state_retries: 0,
+      });
       return buildLanguageSelection(user);
     }
 
-    if (MENU_KEYWORDS.some((k) => cleanText === k) && state === 'IDLE') {
+    if (LEADERBOARD_KEYWORDS.some((k) => cleanText.startsWith(k)) || msg.text === 'view_leaderboard') {
+      await updateConversationState(user.id, 'IDLE', {
+        pending_match_id: null,
+        pending_winner: null,
+        state_retries: 0,
+      });
+      return handleLeaderboardRequest(user);
+    }
+
+    if (LEAGUE_KEYWORDS.some((k) => cleanText.startsWith(k)) || msg.text === 'view_leagues') {
+      await updateConversationState(user.id, 'IDLE', {
+        pending_match_id: null,
+        pending_winner: null,
+        state_retries: 0,
+      });
+      return handleLeagueMenuRequest(user);
+    }
+
+    if (MENU_KEYWORDS.some((k) => cleanText === k)) {
+      await updateConversationState(user.id, 'IDLE', {
+        pending_match_id: null,
+        pending_winner: null,
+        state_retries: 0,
+      });
       return buildMainMenu(user);
     }
   }
@@ -144,6 +214,12 @@ export async function processMessage(
     case 'PREDICTION_SCORE':
       return handleScoreInput(user, msg.text);
 
+    case 'LEAGUE_CREATE_NAME':
+      return handleCreateLeague(user, msg.text);
+
+    case 'LEAGUE_JOIN_CODE':
+      return handleJoinLeague(user, msg.text);
+
     case 'IDLE':
     default:
       return buildMainMenu(user);
@@ -163,6 +239,13 @@ function buildMainMenu(user: User): BotResponse {
             rows: [
               { id: 'predict_now', title: '⚽ Predict a match' },
               { id: 'my_predictions', title: '📋 My predictions' },
+            ],
+          },
+          {
+            title: 'COMPETITION',
+            rows: [
+              { id: 'view_leaderboard', title: '🏆 Global Leaderboard' },
+              { id: 'view_leagues', title: '🤝 Friend Leagues' },
             ],
           },
           {
@@ -218,6 +301,26 @@ function buildLanguageSelection(user: User): BotResponse {
           { id: 'language_ml', label: 'മലയാളം 🇮🇳' },
           { id: 'language_ar', label: 'العربية 🇸🇦' },
         ],
+      },
+    ],
+  };
+}
+
+function buildHowItWorksResponse(user: User): BotResponse {
+  return {
+    messages: [
+      {
+        kind: 'buttons',
+        text:
+          `ℹ️ *HOW OHMYKICK WORKS*\n\n` +
+          `1️⃣ *Predict:* Before kickoff, tap *Predict Now* and submit your prediction (winner + score).\n\n` +
+          `2️⃣ *Lock:* All predictions lock automatically at the match's kickoff time.\n\n` +
+          `3️⃣ *Score:* When the match ends, we score your prediction:\n` +
+          `   • *Exact Score* = *25 points* 🏆\n` +
+          `   • *Correct Winner* (but wrong score) = *10 points* ⚽\n` +
+          `   • *Wrong Winner* = *0 points* ❌\n\n` +
+          `4️⃣ *Share:* You'll automatically receive a beautiful shareable Result Poster detailing your performance. Share it to show your friends who is the true football expert!`,
+        buttons: [{ id: 'predict_now', label: '⚽ Predict Now' }],
       },
     ],
   };
