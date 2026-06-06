@@ -101,7 +101,6 @@ export async function GET(request: NextRequest) {
           FAN PASSPORT
         </div>
 
-        {/* Photo / Avatar */}
         <div style={{
           width: 260,
           height: 260,
@@ -114,11 +113,21 @@ export async function GET(request: NextRequest) {
           marginBottom: 44,
           background: 'linear-gradient(135deg, #1a1200, #0d0d0d)',
           boxShadow: '0 0 60px rgba(240, 180, 41, 0.3)',
+          position: 'relative',
         }}>
           {photoUrl ? (
             <img src={photoUrl} width={260} height={260} style={{ objectFit: 'cover' }} />
           ) : (
-            <div style={{ fontSize: 120 }}>{flagEmoji}</div>
+            <svg width="150" height="160" viewBox="0 0 100 110" fill="none">
+              <path 
+                d="M50 0 C75 0 95 10 95 30 C95 65 70 100 50 110 C30 100 5 65 5 30 C5 10 25 0 50 0 Z" 
+                fill={primaryColor} 
+              />
+              <path 
+                d="M20 15 C35 25 65 25 80 15 L85 28 C65 40 35 40 15 28 Z" 
+                fill={secondaryColor} 
+              />
+            </svg>
           )}
         </div>
 
