@@ -15,6 +15,7 @@ import {
 import {
   getUserPredictionForMatch,
   createPrediction,
+  deletePrediction,
   calculateResultType,
   getUserRecentPredictions,
 } from '../db/predictions.js';
@@ -167,17 +168,21 @@ export async function handleMatchSelection(
     };
   }
 
-  // Check if already predicted
+  // Check if already predicted - if so, delete it and let them redo!
   const existing = await getUserPredictionForMatch(user.id, matchId);
   if (existing) {
-    return {
-      messages: [
-        {
-          kind: 'text',
-          text: getTranslation(user.language, 'already_predicted', existing.predicted_home_score, existing.predicted_away_score),
-        },
-      ],
-    };
+    if (existing.is_locked) {
+      return {
+        messages: [
+          {
+            kind: 'text',
+            text: `🔒 This match has already kicked off. Your prediction of *${existing.predicted_home_score} – ${existing.predicted_away_score}* is locked!`,
+          },
+        ],
+      };
+    }
+    // Delete the old prediction so they can overwrite it
+    await deletePrediction(existing.id);
   }
 
   await updateConversationState(user.id, 'PREDICTION_WINNER', {

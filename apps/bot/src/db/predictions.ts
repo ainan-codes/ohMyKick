@@ -13,6 +13,14 @@ export async function getUserPredictionForMatch(
   return data;
 }
 
+export async function deletePrediction(predictionId: string): Promise<void> {
+  await supabase
+    .from('predictions')
+    .delete()
+    .eq('id', predictionId)
+    .eq('is_locked', false);
+}
+
 export async function createPrediction(params: {
   user_id: string;
   match_id: string;
