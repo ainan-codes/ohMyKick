@@ -1,0 +1,20 @@
+{
+  "name": "ohmykick-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OhMyKick - FIFA World Cup 2026 Fan Prediction Platform",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:bot": "npm run dev --workspace=apps/bot",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "build:bot": "npm run build --workspace=apps/bot",
+    "build:web": "npm run build --workspace=apps/web",
+    "test:bot": "npm run test --workspace=apps/bot",
+    "seed-matches": "npm run seed-matches --workspace=apps/bot"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}
