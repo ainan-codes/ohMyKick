@@ -38,6 +38,10 @@ services:
         sync: false
       - key: WA_NUMBER
         sync: false
+      - key: NODE_ENV
+        value: production
+      - key: POSTHOG_API_KEY
+        sync: false
 
   - type: redis
     name: ohmykick-redis

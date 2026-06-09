@@ -11,8 +11,9 @@ import {
   updatePredictionPosterUrl,
   markPosterSent,
 } from '../db/predictions.js';
-import { sendWhatsAppImage, sendWhatsAppTemplate } from '../whatsapp/sender.js';
-import { sendTgPhoto } from '../telegram/sender.js';
+import { sendWhatsAppImage, sendWhatsAppTemplate, sendWhatsAppButtons } from '../whatsapp/sender.js';
+import { sendTgPhoto, sendTgButtons } from '../telegram/sender.js';
+import { getNextMatch, formatKickoffTime, formatMatchForDisplay } from '../db/matches.js';
 import { COUNTRIES } from '../utils/countries.js';
 import { logNotification, trackEvent } from '../utils/analytics.js';
 import { ACHIEVEMENTS } from '../utils/achievements.js';
@@ -484,9 +485,68 @@ async function processNotifyJob(job: { data: any }) {
         channel,
         resultType: prediction?.result_type ?? 'WRONG',
       });
+
+      // ── Auto Next-Match Prompt ─────────────────────────────────
+      // Schedule a follow-up prediction nudge 15 minutes after the result poster
+      await notifyQueue.add(
+        'next-match-prompt',
+        { userId },
+        { delay: 15 * 60 * 1000 } // 15 minutes
+      );
     }
   } catch (err: any) {
     console.error('[notifyWorker] trackEvent error:', err.message);
+  }
+}
+
+// ─── Next-match prompt handler ────────────────────────────────
+async function processNextMatchPromptJob(job: { data: any }) {
+  const { userId } = job.data;
+  const user = await getUserById(userId);
+  if (!user) return;
+
+  // Find next upcoming predictable match
+  const nextMatch = await getNextMatch();
+  if (!nextMatch) {
+    console.log(`[NextMatchPrompt] No upcoming match found for user ${userId}`);
+    return;
+  }
+
+  // Check if user already predicted this match
+  const existing = await getUserPredictionForMatch(userId, nextMatch.id);
+  if (existing) {
+    console.log(`[NextMatchPrompt] User ${userId} already predicted match ${nextMatch.id}`);
+    return;
+  }
+
+  const matchDisplay = formatMatchForDisplay(nextMatch);
+  const kickoffTime = formatKickoffTime(nextMatch);
+  const text =
+    `🔔 *Next match is coming up!*\n\n` +
+    `⚽ *${matchDisplay}*\n` +
+    `🕒 Kicks off at ${kickoffTime}\n\n` +
+    `Don't forget to lock in your prediction before kickoff! ⏰`;
+
+  if (user.tg_id) {
+    await sendTgButtons(
+      user.tg_id,
+      text,
+      [{ id: 'predict_now', label: '⚽ Predict Now' }],
+      1
+    );
+    console.log(`[NextMatchPrompt] Sent TG next-match prompt to user ${userId}`);
+  }
+
+  if (user.wa_id) {
+    try {
+      await sendWhatsAppButtons(user.wa_id, text, [
+        { id: 'predict_now', title: '⚽ Predict Now' },
+        { id: 'view_passport', title: '🎫 My Passport' },
+      ]);
+      console.log(`[NextMatchPrompt] Sent WA next-match prompt to user ${userId}`);
+    } catch (err: any) {
+      console.error('[NextMatchPrompt] WA send failed:', err.message);
+    }
   }
 }
 
@@ -500,7 +560,12 @@ const posterWorker = new Worker(
 // ─── Notification delivery worker ────────────────────────────
 const notifyWorker = new Worker(
   'notifications',
-  async (job) => processNotifyJob(job),
+  async (job) => {
+    if (job.name === 'next-match-prompt') {
+      return processNextMatchPromptJob(job);
+    }
+    return processNotifyJob(job);
+  },
   { connection: redis as any, concurrency: 50 }
 );
 
