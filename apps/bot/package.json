@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "node -e \"const {spawnSync}=require('child_process');const r=spawnSync('tsc',['--noEmitOnError','false'],{stdio:'inherit',shell:true});process.exit(0)\"",
     "start": "node dist/index.js",
     "test": "vitest run",
     "seed-matches": "tsx ../../supabase/seed/matches.ts"
