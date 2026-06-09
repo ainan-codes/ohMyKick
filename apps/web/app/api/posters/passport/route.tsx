@@ -183,27 +183,54 @@ export async function GET(request: NextRequest) {
           ))}
         </div>
 
-        {/* SPACER */}
-        <div style={{ flex: 1, display: 'flex' }} />
-
-        {/* REFERRAL LINK */}
-        {referralCode && (
-          <div style={{
-            fontSize: 26, color: 'rgba(255,255,255,0.35)',
-            letterSpacing: 3, marginBottom: 16, display: 'flex',
-          }}>
-            ohmykick.com/{referralCode}
-          </div>
-        )}
-
-        {/* BOTTOM WORDMARK */}
+        {/* FOOTER ROW */}
         <div style={{
-          width: '100%', paddingTop: 16, display: 'flex', justifyContent: 'center',
+          display: 'flex',
+          width: '100%',
+          alignItems: 'center',
+          justifyContent: 'space-between',
           borderTop: `1px solid ${theme.accent}44`,
+          paddingTop: 30,
+          marginTop: 'auto',
         }}>
-          <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.25)', letterSpacing: 8, display: 'flex' }}>
-            OHMYKICK
+          {/* LEFT: Referral Text */}
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div style={{
+              fontSize: 20,
+              fontWeight: 800,
+              color: theme.accent,
+              letterSpacing: 2,
+              marginBottom: 8,
+              display: 'flex',
+            }}>
+              RECRUIT YOUR TEAM! JOIN THE ARMY.
+            </div>
+            {referralCode && (
+              <div style={{
+                fontSize: 32,
+                fontWeight: 900,
+                color: '#ffffff',
+                letterSpacing: 3,
+                display: 'flex',
+              }}>
+                ohmykick.com/{referralCode}
+              </div>
+            )}
           </div>
+
+          {/* RIGHT: QR Code */}
+          {referralCode && (
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&color=000000&bgcolor=ffffff&data=${encodeURIComponent(`https://ohmykick.com/${referralCode}`)}`}
+              width={120}
+              height={120}
+              style={{
+                display: 'flex',
+                borderRadius: 8,
+                border: '4px solid #ffffff',
+              }}
+            />
+          )}
         </div>
       </div>
     ),

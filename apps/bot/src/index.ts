@@ -59,13 +59,21 @@ const start = async () => {
     // Set up Telegram webhook/polling if token is available
     const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     const RAILWAY_URL = process.env.RAILWAY_PUBLIC_DOMAIN;
+    const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
 
     if (TG_TOKEN) {
       const { bot } = await import('./telegram/sender.js');
-      if (RAILWAY_URL && process.env.NODE_ENV === 'production') {
-        const webhookUrl = `https://${RAILWAY_URL}/webhook/telegram`;
-        await bot.telegram.setWebhook(webhookUrl);
-        console.log(`   Telegram webhook set: ${webhookUrl}`);
+      if (process.env.NODE_ENV === 'production') {
+        const hostUrl = RENDER_URL || (RAILWAY_URL ? `https://${RAILWAY_URL}` : null);
+        if (hostUrl) {
+          const webhookUrl = `${hostUrl.replace(/\/$/, '')}/webhook/telegram`;
+          await bot.telegram.setWebhook(webhookUrl);
+          console.log(`   Telegram webhook set: ${webhookUrl}`);
+        } else {
+          console.warn('   ⚠️ NODE_ENV is production but no host URL (RENDER_EXTERNAL_URL / RAILWAY_PUBLIC_DOMAIN) was found. Defaulting to polling.');
+          await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+          bot.launch();
+        }
       } else {
         // Delete webhook first to avoid conflict, then launch polling
         await bot.telegram.deleteWebhook({ drop_pending_updates: true });
