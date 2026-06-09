@@ -1,6 +1,8 @@
 import { Queue, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import dotenv from 'dotenv';
+import https from 'https';
+import http from 'http';
 import { supabase } from '../db/client.js';
 import { getUserById, getUserStats } from '../db/users.js';
 import { getMatchById } from '../db/matches.js';
@@ -13,6 +15,7 @@ import { sendWhatsAppImage, sendWhatsAppTemplate } from '../whatsapp/sender.js';
 import { sendTgPhoto } from '../telegram/sender.js';
 import { COUNTRIES } from '../utils/countries.js';
 import { logNotification, trackEvent } from '../utils/analytics.js';
+import { ACHIEVEMENTS } from '../utils/achievements.js';
 
 dotenv.config();
 
@@ -86,6 +89,7 @@ async function processPosterJob(job: { data: any }) {
       name: user.name,
       flagEmoji: user.country_flag_emoji,
       countryName: user.country_name,
+      countryCode: user.country_code ?? '',
       homeTeam: match.home_team,
       awayTeam: match.away_team,
       homeFlag: match.home_flag_emoji ?? '🏳️',
@@ -100,6 +104,8 @@ async function processPosterJob(job: { data: any }) {
       awayPrimary: awayCountry?.primaryColor ?? '#6e1a1a',
       homeCountryCode: match.home_country_code ?? '',
       awayCountryCode: match.away_country_code ?? '',
+      homeCode: match.home_country_code ?? '',
+      awayCode: match.away_country_code ?? '',
     });
     posterApiUrl = `${posterServiceUrl}/api/posters/prematch?${params}`;
   } else if (type === 'result' && matchId && predictionId) {
@@ -111,6 +117,7 @@ async function processPosterJob(job: { data: any }) {
       name: user.name,
       countryName: user.country_name,
       flagEmoji: user.country_flag_emoji,
+      countryCode: user.country_code ?? '',
       homeTeam: match.home_team,
       awayTeam: match.away_team,
       homeFlag: match.home_flag_emoji ?? '🏳️',
@@ -127,8 +134,58 @@ async function processPosterJob(job: { data: any }) {
       referralCode: user.referral_code,
       homeCountryCode: match.home_country_code ?? '',
       awayCountryCode: match.away_country_code ?? '',
+      homeCode: match.home_country_code ?? '',
+      awayCode: match.away_country_code ?? '',
+      winnerCode: (match.home_score ?? 0) > (match.away_score ?? 0) ? (match.home_country_code ?? '')
+                : (match.away_score ?? 0) > (match.home_score ?? 0) ? (match.away_country_code ?? '')
+                : (match.home_country_code ?? ''),
     });
     posterApiUrl = `${posterServiceUrl}/api/posters/result?${params}`;
+  } else if (type === 'achievement') {
+    const { achievementId } = job.data;
+    const ach = ACHIEVEMENTS[achievementId];
+    if (!ach) throw new Error(`Achievement ${achievementId} not found`);
+
+    const params = new URLSearchParams({
+      name: user.name,
+      countryName: user.country_name,
+      flagEmoji: user.country_flag_emoji,
+      countryCode: user.country_code ?? '',
+      title: ach.title,
+      desc: ach.desc,
+      icon: ach.icon,
+      referralCode: user.referral_code,
+    });
+    posterApiUrl = `${posterServiceUrl}/api/posters/achievement?${params}`;
+  } else if (type === 'recap') {
+    const {
+      personality,
+      personalityDesc,
+      personalityIcon,
+      predictions,
+      accuracy,
+      exact,
+      streak,
+      referrals,
+      rank,
+    } = job.data;
+    const params = new URLSearchParams({
+      name: user.name,
+      countryName: user.country_name,
+      flagEmoji: user.country_flag_emoji,
+      countryCode: user.country_code ?? '',
+      personality: personality ?? '',
+      personalityDesc: personalityDesc ?? '',
+      personalityIcon: personalityIcon ?? '',
+      predictions: String(predictions ?? 0),
+      accuracy: String(accuracy ?? 0),
+      exact: String(exact ?? 0),
+      streak: String(streak ?? 0),
+      referrals: String(referrals ?? 0),
+      rank: String(rank ?? 1),
+      referralCode: user.referral_code ?? '',
+    });
+    posterApiUrl = `${posterServiceUrl}/api/posters/recap?${params}`;
   } else {
     throw new Error(`Unknown poster type: ${type}`);
   }
@@ -139,27 +196,68 @@ async function processPosterJob(job: { data: any }) {
   if (!response.ok) throw new Error(`Poster API error: ${response.status}`);
   const imageBuffer = await response.arrayBuffer();
   const buffer = Buffer.from(imageBuffer);
+  console.log(`[Queue] Downloaded poster: ${buffer.length} bytes`);
 
-  // Upload to Supabase Storage
-  const path = `${type}/${userId}${matchId ? `_${matchId}` : ''}_${Date.now()}.png`;
-  const { error: uploadError } = await supabase.storage
-    .from('posters')
-    .upload(path, buffer, { contentType: 'image/png', upsert: true });
+  // Upload to Supabase Storage via raw HTTPS (bypasses FormData issue in SDK)
+  const storagePath = `${type}/${userId}${matchId ? `_${matchId}` : ''}_${Date.now()}.png`;
+  const supabaseUrl = process.env.SUPABASE_URL!;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const uploadUrl = `${supabaseUrl}/storage/v1/object/posters/${storagePath}`;
 
-  if (uploadError) throw new Error(`Supabase upload error: ${uploadError.message}`);
+  console.log(`[Queue] Uploading ${buffer.length} bytes to: ${uploadUrl}`);
+  await new Promise<void>((resolve, reject) => {
+    const url = new URL(uploadUrl);
+    const lib = url.protocol === 'https:' ? https : http;
+    const reqOptions = {
+      method: 'POST' as const,
+      hostname: url.hostname,
+      port: url.port || undefined,
+      path: url.pathname,
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'image/png',
+        'Content-Length': buffer.length,
+        'x-upsert': 'true',
+      } as Record<string, string | number>,
+    };
+    const req = lib.request(reqOptions, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (c: Buffer) => chunks.push(c));
+      res.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf8');
+        if ((res.statusCode ?? 0) >= 400) {
+          console.error(`[Queue] Storage upload HTTP ${res.statusCode}:`, body);
+          reject(new Error(`Storage upload failed: HTTP ${res.statusCode} — ${body}`));
+        } else {
+          console.log(`[Queue] Storage upload OK (${res.statusCode}): ${storagePath}`);
+          resolve();
+        }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(30000, () => { req.destroy(); reject(new Error('Storage upload timeout')); });
+    req.write(buffer);
+    req.end();
+  });
 
-  const { data: urlData } = supabase.storage.from('posters').getPublicUrl(path);
-  const publicUrl = urlData.publicUrl;
+  // Build public URL from known structure (no SDK call needed)
+  const publicUrl = `${supabaseUrl}/storage/v1/object/public/posters/${storagePath}`;
+  console.log(`[Queue] Public URL: ${publicUrl}`);
 
   // Update DB
   if (type === 'passport') {
-    await supabase.from('users').update({
+    const { error: dbErr } = await supabase.from('users').update({
       passport_poster_url: publicUrl,
       passport_poster_updated_at: new Date().toISOString(),
     }).eq('id', userId);
+    if (dbErr) console.error(`[Queue] DB update (passport) FAILED:`, dbErr.message);
+    else console.log(`[Queue] DB updated: passport_poster_url for user ${userId}`);
   } else if (predictionId && (type === 'prematch' || type === 'result')) {
     await updatePredictionPosterUrl(predictionId, type as 'prematch' | 'result', publicUrl);
+    console.log(`[Queue] DB updated: ${type}_poster_url for prediction ${predictionId}`);
   }
+
 
   // Enqueue notification
   await notifyQueue.add('send-poster', {
@@ -168,11 +266,37 @@ async function processPosterJob(job: { data: any }) {
     predictionId,
     posterUrl: publicUrl,
     type,
+    achievementId: job.data.achievementId,
+    personality: job.data.personality,
+    personalityDesc: job.data.personalityDesc,
+    personalityIcon: job.data.personalityIcon,
+    predictions: job.data.predictions,
+    accuracy: job.data.accuracy,
+    exact: job.data.exact,
+    streak: job.data.streak,
+    referrals: job.data.referrals,
+    rank: job.data.rank,
   });
 }
 
 async function processNotifyJob(job: { data: any }) {
-  const { userId, matchId, predictionId, posterUrl, type } = job.data;
+  const {
+    userId,
+    matchId,
+    predictionId,
+    posterUrl,
+    type,
+    achievementId,
+    personality,
+    personalityDesc,
+    personalityIcon,
+    predictions,
+    accuracy,
+    exact,
+    streak,
+    referrals,
+    rank,
+  } = job.data;
 
   const user = await getUserById(userId);
   if (!user) return;
@@ -204,12 +328,23 @@ async function processNotifyJob(job: { data: any }) {
       const resultType = prediction.result_type ?? 'WRONG';
       const points = prediction.points_earned ?? 0;
 
+      // Fetch rank data from global_leaderboard view
+      const { data: rankData } = await supabase
+        .from('global_leaderboard')
+        .select('overall_rank, country_rank')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      const globalRank = rankData?.overall_rank ?? '?';
+      const countryRank = rankData?.country_rank ?? '?';
+
       if (resultType === 'PERFECT') {
         caption =
           `🏆 *YOU CALLED IT, ${user.name.toUpperCase()}!*\n\n` +
           `${match.home_team} ${homeScore} – ${awayScore} ${match.away_team} ✅ EXACT SCORE!\n\n` +
           `+${points} points earned\n` +
-          `🎯 Tournament accuracy: ${stats.accuracyPct}%\n\n` +
+          `🎯 Tournament accuracy: ${stats.accuracyPct}%\n` +
+          `📊 Rank: #${globalRank} globally | #${countryRank} among ${user.country_name} fans\n\n` +
           `Share this. Everyone needs to know 👆\n\n` +
           `Invite friends: ${referralLink}`;
       } else if (resultType === 'CORRECT_WINNER') {
@@ -218,7 +353,8 @@ async function processNotifyJob(job: { data: any }) {
           `⚽ *Nearly perfect, ${user.name}.*\n\n` +
           `You called the winner: ${predictedWinnerName} ✅\n` +
           `Exact score: Not quite (you said ${predHome}-${predAway}, it was ${homeScore}-${awayScore})\n\n` +
-          `+${points} points earned\n\n` +
+          `+${points} points earned\n` +
+          `📊 Rank: #${globalRank} globally\n\n` +
           `The exact score is 25 points. Next match 🎯\n\n` +
           `Invite friends: ${referralLink}`;
       } else {
@@ -227,7 +363,8 @@ async function processNotifyJob(job: { data: any }) {
           `Your pick: ${match.home_team} ${predHome}-${predAway} ${match.away_team} ❌\n` +
           `What happened: ${match.home_team} ${homeScore}-${awayScore} ${match.away_team}\n\n` +
           `+0 points this match\n` +
-          `📊 ${stats.correct}/${stats.total} correct · ${stats.accuracyPct}% accuracy\n\n` +
+          `📊 ${stats.correct}/${stats.total} correct · ${stats.accuracyPct}% accuracy\n` +
+          `📊 Rank: #${globalRank} globally\n\n` +
           `Every great predictor gets this wrong sometimes.\n` +
           `Next match is your chance 🔥\n\n` +
           `Invite friends: ${referralLink}`;
@@ -235,6 +372,27 @@ async function processNotifyJob(job: { data: any }) {
     } else {
       caption = `Your result poster is ready. Check your prediction! ⚽`;
     }
+  } else if (type === 'achievement' && achievementId) {
+    const ach = ACHIEVEMENTS[achievementId];
+    if (ach) {
+      caption =
+        `🎉 *ACHIEVEMENT UNLOCKED: ${ach.title.toUpperCase()} ${ach.icon}*\n\n` +
+        `Description: _${ach.desc}_\n\n` +
+        `Outstanding predicting, ${user.name}! Share your badge to celebrate 👆\n\n` +
+        `Invite friends: ${referralLink}`;
+    }
+  } else if (type === 'recap') {
+    caption =
+      `🏆 *YOUR WORLD CUP 2026 RECAP & PERSONALITY CARD CARD IS READY!*\n\n` +
+      `You've been crowned as: *${personality}* ${personalityIcon}\n\n` +
+      `Stats:\n` +
+      `• Predictions: ${predictions}\n` +
+      `• Accuracy: ${accuracy}%\n` +
+      `• Exact scorelines: ${exact} 🏆\n` +
+      `• Best streak: ${streak} Days\n` +
+      `• Global rank: #${rank}\n\n` +
+      `What a tournament! Share your final card to show off your glory 👆\n\n` +
+      `Invite friends: ${referralLink}`;
   }
 
   const isInWaFreeWindow =
@@ -260,13 +418,27 @@ async function processNotifyJob(job: { data: any }) {
         ]);
       }
     }
-    await logNotification(userId, 'WHATSAPP', type, 'SENT');
+    if (type === 'achievement' && achievementId) {
+      await supabase
+        .from('notification_log')
+        .update({ status: 'SENT', sent_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('notification_type', `ACHIEVEMENT_${achievementId}`);
+    } else if (type === 'recap') {
+      await supabase
+        .from('notification_log')
+        .update({ status: 'SENT', sent_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('notification_type', 'RECAP');
+    } else {
+      await logNotification(userId, 'WHATSAPP', type, 'SENT');
+    }
   }
 
   // Send via Telegram (always free, no template restrictions)
   if (user.tg_id) {
     const buttons =
-      type !== 'passport'
+      type !== 'passport' && type !== 'recap'
         ? [
             [
               { id: 'predict_now', label: '⚽ Predict Next Match' },
@@ -281,7 +453,22 @@ async function processNotifyJob(job: { data: any }) {
     } else if (predictionId && type === 'result') {
       await markPosterSent(predictionId, 'result', 'tg');
     }
-    await logNotification(userId, 'TELEGRAM', type, 'SENT');
+    
+    if (type === 'achievement' && achievementId) {
+      await supabase
+        .from('notification_log')
+        .update({ status: 'SENT', sent_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('notification_type', `ACHIEVEMENT_${achievementId}`);
+    } else if (type === 'recap') {
+      await supabase
+        .from('notification_log')
+        .update({ status: 'SENT', sent_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('notification_type', 'RECAP');
+    } else {
+      await logNotification(userId, 'TELEGRAM', type, 'SENT');
+    }
   }
 
   // Track analytics events

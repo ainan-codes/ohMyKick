@@ -4,7 +4,6 @@ import { getTranslation } from '../utils/i18n.js';
 import type { BotResponse } from './prediction.js';
 
 export async function handleLeaderboardRequest(user: User): Promise<BotResponse> {
-  const t = getTranslation(user.language);
 
   // Fetch the user's global rank
   const { data: rankData, error: rankError } = await supabase

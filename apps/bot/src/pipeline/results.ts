@@ -1,6 +1,7 @@
 import { supabase } from '../db/client.js';
 import { getUserById, getUserStats } from '../db/users.js';
 import { getMatchById } from '../db/matches.js';
+import { checkAndAwardAchievements } from '../utils/achievements.js';
 import {
   getAllPredictionsForMatch,
   updatePredictionResult,
@@ -19,6 +20,15 @@ export async function processMatchResult(
 
   // Lock all remaining predictions for this match
   await lockMatchPredictions(matchId);
+
+  // Persist the actual final score to the match record
+  await supabase.from('matches').update({
+    home_score: homeScore,
+    away_score: awayScore,
+    status: 'FINISHED',
+    prediction_open: false,
+    updated_at: new Date().toISOString(),
+  }).eq('id', matchId);
 
   // Get all locked predictions for this match
   const predictions = await getAllPredictionsForMatch(matchId);
@@ -39,13 +49,13 @@ export async function processMatchResult(
         awayScore
       );
 
-      // Add First Goal Scorer bonus points (10 points)
+      // Add First Goal Scorer bonus points (20 points)
       if (
         firstScorer &&
         prediction.predicted_first_scorer &&
         prediction.predicted_first_scorer.toLowerCase() === firstScorer.toLowerCase()
       ) {
-        points += 10;
+        points += 20;
       }
 
       // Update prediction with result
@@ -62,7 +72,7 @@ export async function processMatchResult(
       const user = await getUserById(prediction.user_id);
       if (user && stats) {
         let newLevel = user.fan_level;
-        if (stats.total >= 15 && stats.accuracyPct >= 30) {
+        if (stats.total >= 15 && stats.accuracyPct >= 50) {
           newLevel = 'LEGEND';
         } else if (stats.total >= 5) {
           newLevel = 'SUPPORTER';
@@ -78,15 +88,16 @@ export async function processMatchResult(
         }
       }
 
-      // Queue result poster generation
+      // Check and award any achievements unlocked by this match result
+      await checkAndAwardAchievements(prediction.user_id);
+
+      // Queue result poster generation (no random delay — poster API handles concurrency)
       await posterQueue.add('result-poster', {
         type: 'result',
         userId: prediction.user_id,
         matchId,
         predictionId: prediction.id,
       }, {
-        // Stagger jobs slightly to avoid hitting poster API all at once
-        delay: Math.floor(Math.random() * 30000), // 0-30 second random delay
         attempts: 3,
         backoff: { type: 'exponential', delay: 5000 },
       });
@@ -99,3 +110,4 @@ export async function processMatchResult(
 
   console.log(`[Results] Done processing match ${matchId}`);
 }
+

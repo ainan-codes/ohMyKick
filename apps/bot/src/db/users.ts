@@ -61,7 +61,7 @@ export async function createUser(params: {
       // fan_id and referral_code are generated server-side via DB function
       fan_id: `${params.country_code.toUpperCase()}-${Math.floor(100000 + Math.random() * 900000)}`,
       referral_code: generateReferralCode(),
-      conversation_state: 'ONBOARDING_NAME',
+      conversation_state: 'NEW',
     })
     .select()
     .single();

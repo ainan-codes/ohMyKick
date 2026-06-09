@@ -12,6 +12,7 @@ import {
   handleWinnerSelection,
   handleScoreInput,
   handleMyPredictionsRequest,
+  handleFirstScorerInput,
   type BotResponse,
   type ChannelMessage,
 } from '../flows/prediction.js';
@@ -20,6 +21,7 @@ import { handleReferralRequest } from '../flows/referral.js';
 import { getTranslation } from '../utils/i18n.js';
 import { handleLeaderboardRequest } from '../flows/leaderboard.js';
 import { handleLeagueMenuRequest, handleLeagueAction, handleCreateLeague, handleJoinLeague } from '../flows/league.js';
+import { handleRecapRequest } from '../flows/recap.js';
 
 // Global keywords that work in any state
 const PREDICT_KEYWORDS = ['predict', 'prediction', 'predictions'];
@@ -30,6 +32,7 @@ const STREAK_KEYWORDS = ['streak'];
 const LANGUAGE_KEYWORDS = ['lang', 'language', 'ഭാഷ', 'اللغة'];
 const LEADERBOARD_KEYWORDS = ['rank', 'leaderboard', 'standings', 'country war'];
 const LEAGUE_KEYWORDS = ['league', 'leagues', 'friend league'];
+const RECAP_KEYWORDS = ['recap', 'personality', 'final recap', 'recap card'];
 
 export async function processMessage(
   user: User,
@@ -138,6 +141,15 @@ export async function processMessage(
       return handleLeagueMenuRequest(user);
     }
 
+    if (RECAP_KEYWORDS.some((k) => cleanText.startsWith(k)) || msg.text === 'view_recap') {
+      await updateConversationState(user.id, 'IDLE', {
+        pending_match_id: null,
+        pending_winner: null,
+        state_retries: 0,
+      });
+      return handleRecapRequest(user);
+    }
+
     if (MENU_KEYWORDS.some((k) => cleanText === k)) {
       await updateConversationState(user.id, 'IDLE', {
         pending_match_id: null,
@@ -214,6 +226,9 @@ export async function processMessage(
     case 'PREDICTION_SCORE':
       return handleScoreInput(user, msg.text);
 
+    case 'PREDICTION_FIRST_SCORER':
+      return handleFirstScorerInput(user, msg.text);
+
     case 'LEAGUE_CREATE_NAME':
       return handleCreateLeague(user, msg.text);
 
@@ -252,6 +267,7 @@ function buildMainMenu(user: User): BotResponse {
             title: 'MY PROFILE',
             rows: [
               { id: 'view_passport', title: '🎫 My fan passport' },
+              { id: 'view_recap', title: '🏆 My tournament recap' },
               { id: 'streak_check', title: '🔥 My streak' },
             ],
           },

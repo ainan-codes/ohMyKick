@@ -1,285 +1,420 @@
+// apps/web/app/api/posters/result/route.tsx
 import { ImageResponse } from 'next/og';
 import { NextRequest } from 'next/server';
+import React from 'react';
+import { getTheme, getResultBackground } from '../teamPatterns';
 
 export const runtime = 'edge';
+
+const CircularBadge = ({ primary, secondary, size = 44 }: { primary: string, secondary: string, size?: number }) => (
+  <div style={{
+    display: 'flex',
+    width: size, height: size,
+    borderRadius: '50%',
+    overflow: 'hidden',
+    border: '2px solid rgba(255,255,255,0.8)',
+    position: 'relative',
+  }}>
+    <div style={{ flex: 1, backgroundColor: primary, display: 'flex' }} />
+    <div style={{ flex: 1, backgroundColor: secondary, display: 'flex' }} />
+  </div>
+);
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
 
-  const name = searchParams.get('name') ?? 'FAN';
-  const countryName = searchParams.get('countryName') ?? '';
-  const flagEmoji = searchParams.get('flagEmoji') ?? '🏳️';
+  const name = (searchParams.get('name') ?? searchParams.get('userName') ?? 'FAN').toUpperCase().slice(0, 14);
+  const countryName = searchParams.get('countryName') ?? 'World';
   const homeTeam = searchParams.get('homeTeam') ?? 'Team A';
   const awayTeam = searchParams.get('awayTeam') ?? 'Team B';
-  const homeFlag = searchParams.get('homeFlag') ?? '🏳️';
-  const awayFlag = searchParams.get('awayFlag') ?? '🏳️';
-  const predictionHome = searchParams.get('predictionHome') ?? '0';
-  const predictionAway = searchParams.get('predictionAway') ?? '0';
-  const actualHome = searchParams.get('actualHome') ?? '0';
-  const actualAway = searchParams.get('actualAway') ?? '0';
-  const resultType = searchParams.get('resultType') ?? 'WRONG'; // PERFECT | CORRECT_WINNER | WRONG
-  const points = searchParams.get('points') ?? '0';
-  const overallRank = searchParams.get('overallRank') ?? '';
-  const accuracy = searchParams.get('accuracy') ?? '0';
-  const totalPredictions = searchParams.get('totalPredictions') ?? '0';
-  const correctPredictions = searchParams.get('correctPredictions') ?? '0';
+  const predictionHome = searchParams.get('predictionHome') ?? searchParams.get('predictedHomeScore') ?? '0';
+  const predictionAway = searchParams.get('predictionAway') ?? searchParams.get('predictedAwayScore') ?? '0';
+  const actualHome = searchParams.get('actualHome') ?? searchParams.get('actualHomeScore') ?? '0';
+  const actualAway = searchParams.get('actualAway') ?? searchParams.get('actualAwayScore') ?? '0';
+  const resultType = (searchParams.get('resultType') ?? 'WRONG') as 'PERFECT' | 'CORRECT_WINNER' | 'WRONG';
+  const points = searchParams.get('points') ?? searchParams.get('pointsEarned') ?? '0';
+  const accuracy = searchParams.get('accuracy') ?? searchParams.get('accuracyPct') ?? '0';
+  const totalPredictions = searchParams.get('totalPredictions') ?? searchParams.get('totalPredicted') ?? '0';
+  const correctPredictions = searchParams.get('correctPredictions') ?? searchParams.get('totalCorrect') ?? '0';
   const referralCode = searchParams.get('referralCode') ?? '';
 
-  // Design config per result type
+  const homeCode = searchParams.get('homeCode') ?? searchParams.get('homeCountryCode') ?? 'DEFAULT';
+  const awayCode = searchParams.get('awayCode') ?? searchParams.get('awayCountryCode') ?? 'DEFAULT';
+  const userCountryCode = searchParams.get('countryCode') ?? 'DEFAULT';
+
+  // Compute winner code dynamically if not provided
+  let winnerCode = searchParams.get('winnerCode') ?? '';
+  if (!winnerCode || winnerCode === 'DEFAULT') {
+    const homeGoals = parseInt(actualHome);
+    const awayGoals = parseInt(actualAway);
+    if (homeGoals > awayGoals) {
+      winnerCode = homeCode;
+    } else if (awayGoals > homeGoals) {
+      winnerCode = awayCode;
+    } else {
+      winnerCode = homeCode; // tie fallback
+    }
+  }
+
+  const theme = getTheme(winnerCode);
+  const userTheme = getTheme(userCountryCode);
+  const homeTheme = getTheme(homeCode);
+  const awayTheme = getTheme(awayCode);
+
+  // Styling and content configurations based on resultType
   const config = resultType === 'PERFECT'
     ? {
-        bgGradient: 'linear-gradient(175deg, #0a0800 0%, #1a1000 50%, #100a00 100%)',
         accentColor: '#f0b429',
         accentLight: '#ffd166',
         headline: 'YOU CALLED IT',
-        subline: 'EXACT SCORE! 🎯',
-        resultIcon: '🏆',
+        subline: 'EXACT SCORELINE MATCHED!',
         predictionColor: '#4ade80',
-        predictionIcon: '✅',
+        hasTrophy: true,
+        isPerfect: true,
       }
     : resultType === 'CORRECT_WINNER'
     ? {
-        bgGradient: 'linear-gradient(175deg, #070810 0%, #0d0d1a 50%, #07070e 100%)',
-        accentColor: '#c0c0c0',
-        accentLight: '#e8e8e8',
-        headline: 'ALMOST PERFECT',
-        subline: 'RIGHT WINNER, KEEP GOING',
-        resultIcon: '🎯',
+        accentColor: '#ffffff',
+        accentLight: theme.accent,
+        headline: 'NICE CALL',
+        subline: 'RIGHT WINNER, KEEP GOING!',
         predictionColor: '#60a5fa',
-        predictionIcon: '⚡',
+        hasTrophy: false,
+        isCorrectWinner: true,
       }
     : {
-        bgGradient: 'linear-gradient(175deg, #050510 0%, #0a0514 50%, #050508 100%)',
-        accentColor: '#4a4a6a',
-        accentLight: '#6a6a8a',
-        headline: 'FOOTBALL CAN BE CRUEL',
-        subline: 'NEXT MATCH, SAME PASSION',
-        resultIcon: '🌧️',
+        accentColor: '#ff4444',
+        accentLight: '#ff8888',
+        headline: 'SO CLOSE',
+        subline: 'NEXT MATCH, SAME PASSION!',
         predictionColor: '#ef4444',
-        predictionIcon: '❌',
+        hasTrophy: false,
+        isWrong: true,
       };
 
   return new ImageResponse(
     (
-      <div
-        style={{
-          width: 1080,
-          height: 1920,
-          background: config.bgGradient,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          padding: '80px 80px',
-          fontFamily: 'sans-serif',
-          position: 'relative',
-        }}
-      >
+      <div style={{
+        width: 1080, height: 1920,
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        padding: '80px 80px 60px',
+        position: 'relative', overflow: 'hidden',
+        fontFamily: 'sans-serif',
+      }}>
+        {/* BACKGROUND */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex' }}>
+          {getResultBackground(winnerCode, resultType)}
+        </div>
+
         {/* Top accent line */}
         <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: '4px',
-          background: `linear-gradient(90deg, transparent, ${config.accentColor}, ${config.accentLight}, ${config.accentColor}, transparent)`,
+          position: 'absolute', top: 0, left: 0, right: 0, height: '4px',
+          background: `linear-gradient(90deg, transparent, ${config.accentColor}, ${theme.accent}, ${config.accentColor}, transparent)`,
+          display: 'flex',
         }} />
 
         {/* Tournament label */}
         <div style={{
-          fontSize: 28,
-          color: '#555',
-          letterSpacing: 6,
-          marginBottom: 50,
-          textTransform: 'uppercase',
+          fontSize: 22, color: 'rgba(255,255,255,0.4)',
+          letterSpacing: 8, marginBottom: 50, display: 'flex',
+          fontWeight: 700,
         }}>
-          ⚽ WORLD CUP 2026
+          OHMYKICK · WORLD CUP 2026
         </div>
 
-        {/* Result icon */}
-        <div style={{ fontSize: 100, marginBottom: 20 }}>
-          {config.resultIcon}
-        </div>
-
-        {/* Headline */}
+        {/* Headline with inline SVG icon instead of emoji */}
         <div style={{
-          fontSize: resultType === 'PERFECT' ? 108 : 80,
-          fontWeight: 900,
-          color: config.accentColor,
-          textAlign: 'center',
-          lineHeight: 1,
-          letterSpacing: resultType === 'PERFECT' ? 0 : 2,
-          marginBottom: 24,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 16,
         }}>
-          {config.headline}
+          {config.hasTrophy ? (
+            <svg width="76" height="76" viewBox="0 0 24 24" fill="none" stroke={config.accentColor} strokeWidth="2" style={{ marginRight: 20, display: 'flex' }}>
+              <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+              <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+              <path d="M4 22h16"/>
+              <path d="M10 14.66V17c0 .55-.45 1-1 1H4v2h16v-2h-5c-.55 0-1-.45-1-1v-2.34"/>
+              <path d="M12 2a6 6 0 0 0-6 6v5a6 6 0 0 0 12 0V8a6 6 0 0 0-6-6z"/>
+            </svg>
+          ) : config.isCorrectWinner ? (
+            <svg width="68" height="68" viewBox="0 0 24 24" fill="none" stroke={config.accentColor} strokeWidth="2.5" style={{ marginRight: 20, display: 'flex' }}>
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          ) : (
+            <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke={config.accentColor} strokeWidth="2.5" style={{ marginRight: 20, display: 'flex' }}>
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+          )}
+
+          <span style={{
+            fontSize: resultType === 'PERFECT' ? 90 : 76,
+            fontWeight: 900,
+            color: config.accentColor,
+            letterSpacing: 2,
+            display: 'flex',
+            textShadow: `0 4px 30px ${config.accentColor}88`,
+          }}>
+            {config.headline}
+          </span>
         </div>
 
         {/* Subline */}
         <div style={{
-          fontSize: 32,
+          fontSize: 28,
           color: config.accentLight,
           letterSpacing: 4,
-          marginBottom: 64,
-          textTransform: 'uppercase',
+          marginBottom: 60,
+          display: 'flex',
+          fontWeight: 700,
         }}>
           {config.subline}
         </div>
 
-        {/* Match result */}
+        {/* Match result block */}
         <div style={{
           display: 'flex',
+          flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
           width: '100%',
           marginBottom: 48,
-          padding: '40px 48px',
+          padding: '44px 48px',
           background: 'rgba(255,255,255,0.04)',
           borderRadius: 24,
-          border: '1px solid rgba(255,255,255,0.07)',
+          border: '1px solid rgba(255,255,255,0.08)',
         }}>
+          {/* Home team */}
           <div style={{
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: 12,
+            width: 260,
           }}>
-            <div style={{ fontSize: 80 }}>{homeFlag}</div>
-            <div style={{ fontSize: 32, color: '#aaa', fontWeight: 600 }}>{homeTeam}</div>
-          </div>
-
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 8,
-          }}>
-            <div style={{ fontSize: 20, color: '#444', letterSpacing: 4 }}>RESULT</div>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 20,
-            }}>
-              <div style={{ fontSize: 96, fontWeight: 900, color: '#fff' }}>{actualHome}</div>
-              <div style={{ fontSize: 56, color: '#333' }}>–</div>
-              <div style={{ fontSize: 96, fontWeight: 900, color: '#fff' }}>{actualAway}</div>
+            <div style={{ marginBottom: 12, display: 'flex' }}>
+              <CircularBadge primary={homeTheme.primary} secondary={homeTheme.secondary} size={90} />
+            </div>
+            <div style={{ fontSize: 28, color: '#e0e0e0', fontWeight: 700, textTransform: 'uppercase', display: 'flex', textAlign: 'center' }}>
+              {homeTeam}
             </div>
           </div>
 
+          {/* VS/Scores */}
           <div style={{
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: 12,
           }}>
-            <div style={{ fontSize: 80 }}>{awayFlag}</div>
-            <div style={{ fontSize: 32, color: '#aaa', fontWeight: 600 }}>{awayTeam}</div>
+            <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.3)', letterSpacing: 4, fontWeight: 700, marginBottom: 8, display: 'flex' }}>
+              FINAL RESULT
+            </div>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+            }}>
+              <span style={{ fontSize: 88, fontWeight: 900, color: '#fff', display: 'flex' }}>{actualHome}</span>
+              <span style={{ fontSize: 56, color: 'rgba(255,255,255,0.2)', marginLeft: 20, marginRight: 20, display: 'flex' }}>–</span>
+              <span style={{ fontSize: 88, fontWeight: 900, color: '#fff', display: 'flex' }}>{actualAway}</span>
+            </div>
+          </div>
+
+          {/* Away team */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            width: 260,
+          }}>
+            <div style={{ marginBottom: 12, display: 'flex' }}>
+              <CircularBadge primary={awayTheme.primary} secondary={awayTheme.secondary} size={90} />
+            </div>
+            <div style={{ fontSize: 28, color: '#e0e0e0', fontWeight: 700, textTransform: 'uppercase', display: 'flex', textAlign: 'center' }}>
+              {awayTeam}
+            </div>
           </div>
         </div>
 
         {/* Prediction vs Actual comparison */}
         <div style={{
           width: '100%',
-          background: 'rgba(255,255,255,0.04)',
+          background: 'rgba(255,255,255,0.03)',
           borderRadius: 24,
-          border: '1px solid rgba(255,255,255,0.07)',
+          border: '1px solid rgba(255,255,255,0.06)',
           padding: '40px 48px',
           display: 'flex',
           flexDirection: 'column',
-          gap: 20,
-          marginBottom: 56,
+          marginBottom: 50,
         }}>
+          {/* Row 1: Prediction */}
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            fontSize: 36,
+            marginBottom: 20,
           }}>
-            <span style={{ color: 'rgba(255,255,255,0.5)' }}>Your prediction</span>
-            <span style={{ color: config.predictionColor, fontWeight: 700 }}>
-              {`${predictionHome} – ${predictionAway} ${config.predictionIcon}`}
+            <span style={{ fontSize: 32, color: 'rgba(255,255,255,0.4)', display: 'flex' }}>Your prediction</span>
+            <span style={{ fontSize: 36, color: config.predictionColor, fontWeight: 800, display: 'flex', alignItems: 'center' }}>
+              {predictionHome} – {predictionAway} &nbsp;&nbsp;
+              {config.isPerfect ? (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3" style={{ display: 'flex' }}>
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              ) : config.isCorrectWinner ? (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="3" style={{ display: 'flex' }}>
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              ) : (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="3" style={{ display: 'flex' }}>
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              )}
             </span>
           </div>
+
+          {/* Divider */}
+          <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', width: '100%', marginBottom: 20, display: 'flex' }} />
+
+          {/* Row 2: Actual */}
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            fontSize: 36,
           }}>
-            <span style={{ color: 'rgba(255,255,255,0.5)' }}>Actual result</span>
-            <span style={{ color: '#888', fontWeight: 700 }}>
-              {`${actualHome} – ${actualAway}`}
+            <span style={{ fontSize: 32, color: 'rgba(255,255,255,0.4)', display: 'flex' }}>Actual result</span>
+            <span style={{ fontSize: 36, color: '#ffffff', fontWeight: 800, display: 'flex' }}>
+              {actualHome} – {actualAway}
             </span>
           </div>
         </div>
 
-        {/* Stats row */}
+        {/* Points and statistics badges */}
         <div style={{
           display: 'flex',
+          flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 32,
-          marginBottom: 64,
-          fontSize: 34,
-          color: config.accentColor,
-          fontWeight: 700,
+          width: '100%',
+          marginBottom: 50,
         }}>
-          <span>{`+${points} pts`}</span>
-          <span style={{ color: '#333', fontWeight: 300 }}>·</span>
-          {overallRank && <><span>{`#${overallRank}`}</span><span style={{ color: '#333', fontWeight: 300 }}>·</span></>}
-          <span>{`${correctPredictions}/${totalPredictions} correct`}</span>
-          <span style={{ color: '#333', fontWeight: 300 }}>·</span>
-          <span>{`${accuracy}%`}</span>
+          {/* Points badge */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: 'rgba(255,255,255,0.06)',
+            padding: '12px 28px',
+            borderRadius: 30,
+            border: `1.5px solid ${config.accentColor}44`,
+            marginRight: 16,
+          }}>
+            <span style={{ fontSize: 24, fontWeight: 800, color: config.accentColor, display: 'flex' }}>
+              +{points} PTS
+            </span>
+          </div>
+
+          {/* Accuracy badge */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: 'rgba(255,255,255,0.06)',
+            padding: '12px 28px',
+            borderRadius: 30,
+            border: '1px solid rgba(255,255,255,0.1)',
+            marginRight: 16,
+          }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e0e0e0" strokeWidth="2.5" style={{ marginRight: 8, display: 'flex' }}>
+              <circle cx="12" cy="12" r="10"/>
+              <circle cx="12" cy="12" r="6"/>
+              <circle cx="12" cy="12" r="2"/>
+            </svg>
+            <span style={{ fontSize: 24, fontWeight: 700, color: '#e0e0e0', display: 'flex' }}>
+              {accuracy}% ACC
+            </span>
+          </div>
+
+          {/* Correct Count badge */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: 'rgba(255,255,255,0.06)',
+            padding: '12px 28px',
+            borderRadius: 30,
+            border: '1px solid rgba(255,255,255,0.1)',
+          }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#e0e0e0" style={{ marginRight: 8, display: 'flex' }}>
+              <path d="M17.66 11.57C17.43 8 15.34 5.08 12.33 3.75c-.2-.09-.4.07-.36.29.35 1.87-.29 4.13-1.8 5.64C8.66 11.19 8 13.13 8 15.5c0 2.2 1.3 4.2 3.3 4.9.22.08.4-.12.34-.35-.29-1.07-.15-2.24.46-3.23.4-.64 1.02-1.08 1.6-1.6 1.4-1.26 2.3-3.06 2.3-4.83.01-.28-.01-.56-.04-.82z"/>
+            </svg>
+            <span style={{ fontSize: 24, fontWeight: 700, color: '#e0e0e0', display: 'flex' }}>
+              {correctPredictions}/{totalPredictions} OK
+            </span>
+          </div>
         </div>
 
+        {/* Spacer */}
+        <div style={{ flex: 1, display: 'flex' }} />
+
         {/* User name and country */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 12 }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          marginBottom: 40,
+        }}>
           <div style={{
-            fontSize: 72,
+            fontSize: name.length > 10 ? 60 : 76,
             fontWeight: 900,
-            color: '#fff',
+            color: '#ffffff',
             letterSpacing: 2,
+            marginBottom: 10,
+            display: 'flex',
+            textShadow: `0 4px 20px ${theme.primary}55`,
           }}>
-            {name.toUpperCase()}
+            {name}
           </div>
           <div style={{
-            fontSize: 40,
-            color: '#666',
+            fontSize: 28,
+            color: 'rgba(255,255,255,0.5)',
+            display: 'flex',
+            alignItems: 'center',
           }}>
-            {`${flagEmoji} ${countryName} Supporter`}
+            <CircularBadge primary={userTheme.primary} secondary={userTheme.secondary} size={36} />
+            <span style={{ marginLeft: 12 }}>{countryName.toUpperCase()}</span>
           </div>
         </div>
 
         {/* Referral */}
         {referralCode && (
           <div style={{
-            fontSize: 28,
-            color: '#333',
+            fontSize: 24,
+            color: 'rgba(255,255,255,0.3)',
             letterSpacing: 3,
-            marginTop: 40,
             marginBottom: 20,
+            display: 'flex',
+            fontFamily: 'monospace',
           }}>
-            {`ohmykick.com/${referralCode}`}
+            ohmykick.com/{referralCode}
           </div>
         )}
 
         {/* Bottom wordmark */}
         <div style={{
           width: '100%',
-          borderTop: '1px solid rgba(255,255,255,0.06)',
-          paddingTop: 20,
+          borderTop: '1px solid rgba(255,255,255,0.08)',
+          paddingTop: 16,
           display: 'flex',
           justifyContent: 'center',
         }}>
-          <div style={{ fontSize: 28, color: '#222', letterSpacing: 8 }}>OHMYKICK</div>
+          <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.2)', letterSpacing: 8, display: 'flex' }}>OHMYKICK</div>
         </div>
 
         {/* Bottom accent line */}
         <div style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: '4px',
-          background: `linear-gradient(90deg, transparent, ${config.accentColor}, ${config.accentLight}, ${config.accentColor}, transparent)`,
+          position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px',
+          background: `linear-gradient(90deg, transparent, ${config.accentColor}, ${theme.accent}, ${config.accentColor}, transparent)`,
+          display: 'flex',
         }} />
       </div>
     ),

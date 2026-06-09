@@ -1,4 +1,4 @@
-import { User } from '../db/client.js';
+import { User, supabase } from '../db/client.js';
 import {
   updateConversationState,
   updateUser,
@@ -295,7 +295,7 @@ export async function handleScoreInput(
       state_retries: 0,
     });
     return {
-      messages: [{ kind: 'text', text: 'Who do you think will score the FIRST goal of the match?\n\n(Type the player name, or type "skip" to ignore)' }]
+      messages: [{ kind: 'text', text: 'Want to predict the first goal scorer for bonus points? (+20 if correct)\n\nType a player name, or type "skip" to ignore.' }]
     };
   }
 
@@ -497,6 +497,14 @@ export async function handleFirstScorerInput(user: User, text: string): Promise<
     }
   }
 
+  // Retrieve predictionId to pass to posterQueue
+  const { data: prediction } = await supabase
+    .from('predictions')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('match_id', matchId)
+    .single();
+
   trackEvent(user.id, 'prediction_completed', {
     matchId: matchId,
     resultType: 'score_with_scorer',
@@ -510,11 +518,14 @@ export async function handleFirstScorerInput(user: User, text: string): Promise<
     state_retries: 0,
   });
 
-  await posterQueue.add('prematch-poster', {
-    type: 'prematch',
-    userId: user.id,
-    matchId: matchId,
-  });
+  if (prediction) {
+    await posterQueue.add('prematch-poster', {
+      type: 'prematch',
+      userId: user.id,
+      matchId: matchId,
+      predictionId: prediction.id,
+    });
+  }
 
   return {
     messages: [

@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: ohmykick-bot
+    env: node
+    buildCommand: pnpm install && pnpm --filter bot build
+    startCommand: pnpm --filter bot start
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_BUSINESS_ACCOUNT_ID
+        sync: false
+      - key: WHATSAPP_WEBHOOK_VERIFY_TOKEN
+        value: ohmykick_webhook_secret
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: API_FOOTBALL_KEY
+        sync: false
+      - key: API_FOOTBALL_HOST
+        value: v3.football.api-sports.io
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: ohmykick-redis
+          property: connectionString
+      - key: POSTER_SERVICE_URL
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: TG_BOT_USERNAME
+        sync: false
+      - key: WA_NUMBER
+        sync: false
+
+  - type: redis
+    name: ohmykick-redis
+    ipAllowList: [] # only internal access allowed for security

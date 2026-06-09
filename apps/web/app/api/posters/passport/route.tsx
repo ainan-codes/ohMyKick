@@ -1,263 +1,212 @@
+// apps/web/app/api/posters/passport/route.tsx
 import { ImageResponse } from 'next/og';
 import { NextRequest } from 'next/server';
-import { getTeamBackground } from '../teamPatterns';
+import React from 'react';
+import { getTheme, getPassportBackground, getPhotoFrameStyle } from '../teamPatterns';
 
 export const runtime = 'edge';
+
+const CircularBadge = ({ primary, secondary }: { primary: string, secondary: string }) => (
+  <div style={{
+    display: 'flex',
+    width: 44, height: 44,
+    borderRadius: '50%',
+    overflow: 'hidden',
+    border: '2px solid rgba(255,255,255,0.8)',
+    position: 'relative',
+    marginRight: 12,
+  }}>
+    <div style={{ flex: 1, backgroundColor: primary, display: 'flex' }} />
+    <div style={{ flex: 1, backgroundColor: secondary, display: 'flex' }} />
+  </div>
+);
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
 
-  const name = searchParams.get('name') ?? 'FOOTBALL FAN';
-  const countryName = searchParams.get('countryName') ?? 'World';
-  const flagEmoji = searchParams.get('flagEmoji') ?? '🏳️';
-  const fanId = searchParams.get('fanId') ?? 'WLD-000000';
-  const fanLevel = searchParams.get('fanLevel') ?? 'FAN';
-  const totalPoints = searchParams.get('totalPoints') ?? '0';
-  const accuracyPct = searchParams.get('accuracyPct') ?? '0';
-  const streakCount = searchParams.get('streakCount') ?? '0';
+  const name          = (searchParams.get('name') ?? 'FOOTBALL FAN').toUpperCase().slice(0, 14);
+  const countryCode   = searchParams.get('countryCode') ?? 'DEFAULT';
+  const countryName   = searchParams.get('countryName') ?? 'World';
+  const fanId         = searchParams.get('fanId') ?? 'WLD-000000';
+  const fanLevel      = searchParams.get('fanLevel') ?? 'FAN';
+  const totalPoints   = searchParams.get('totalPoints') ?? '0';
+  const accuracyPct   = searchParams.get('accuracyPct') ?? '0';
+  const streakCount   = searchParams.get('streakCount') ?? '0';
   const referralCount = searchParams.get('referralCount') ?? '0';
-  const referralCode = searchParams.get('referralCode') ?? '';
-  const photoUrl = searchParams.get('photoUrl') ?? null;
-  const countryCode = searchParams.get('countryCode') ?? '';
-  const primaryColor = searchParams.get('primaryColor') ?? '#080810';
-  const secondaryColor = searchParams.get('secondaryColor') ?? '#0a0c1e';
+  const referralCode  = searchParams.get('referralCode') ?? '';
+  const photoUrl      = searchParams.get('photoUrl') ?? null;
+  const variant       = (searchParams.get('variant') ?? 'V3') as 'V1' | 'V2' | 'V3' | 'V4' | 'V5';
 
-  // Level badge config
-  const levelBadge = fanLevel === 'LEGEND'
-    ? { icon: '💎', label: 'LEGEND', color: '#a78bfa' }
-    : fanLevel === 'SUPPORTER'
-    ? { icon: '🌟', label: 'SUPPORTER', color: '#60a5fa' }
-    : { icon: '⭐', label: 'FAN', color: '#f0b429' };
+  const theme = getTheme(countryCode);
+
+  let badgeColor = theme.accent;
+  if (fanLevel === 'LEGEND') badgeColor = '#a78bfa';
+  else if (fanLevel === 'SUPPORTER') badgeColor = '#60a5fa';
+
+  const photoFrameStyle = getPhotoFrameStyle(theme, variant);
 
   return new ImageResponse(
     (
-      <div
-        style={{
-          width: 1080,
-          height: 1920,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          padding: '90px 80px',
-          position: 'relative',
-          fontFamily: 'sans-serif',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Dynamic Country Background */}
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          display: 'flex',
-          opacity: 0.85,
-        }}>
-          {getTeamBackground(countryCode, 'right', primaryColor, secondaryColor)}
-        </div>
-        
-        {/* Dark overlay to ensure text readability */}
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.8) 100%)',
-          display: 'flex',
-        }} />
-
-        {/* Gold accent top line */}
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: '4px',
-          background: 'linear-gradient(90deg, transparent, #f0b429, #ffd166, #f0b429, transparent)',
-        }} />
-
-        {/* Tournament Label */}
-        <div style={{
-          fontSize: 28,
-          color: '#666',
-          letterSpacing: 8,
-          marginBottom: 60,
-          textTransform: 'uppercase',
-        }}>
-          ⚽ WORLD CUP 2026
+      <div style={{
+        width: 1080, height: 1920,
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        padding: '80px 80px 60px',
+        position: 'relative', overflow: 'hidden',
+        fontFamily: 'sans-serif',
+      }}>
+        {/* BACKGROUND — variant-specific */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex' }}>
+          {getPassportBackground(countryCode, variant)}
         </div>
 
-        {/* FAN PASSPORT title */}
+        {/* OHMYKICK wordmark */}
         <div style={{
-          fontSize: 80,
-          fontWeight: 900,
-          color: '#f0b429',
-          letterSpacing: 12,
-          marginBottom: 70,
-          textTransform: 'uppercase',
+          fontSize: 22, color: 'rgba(255,255,255,0.5)',
+          letterSpacing: 10, marginBottom: 8, display: 'flex',
         }}>
-          FAN PASSPORT
+          OHMYKICK
+        </div>
+        <div style={{
+          fontSize: 16, color: 'rgba(255,255,255,0.3)',
+          letterSpacing: 5, marginBottom: 50, display: 'flex',
+        }}>
+          FAN PASSPORT · WORLD CUP 2026
         </div>
 
-        <div style={{
-          width: 260,
-          height: 260,
-          borderRadius: '50%',
-          border: '6px solid #f0b429',
-          overflow: 'hidden',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: 44,
-          background: 'linear-gradient(135deg, #1a1200, #0d0d0d)',
-          boxShadow: '0 0 60px rgba(240, 180, 41, 0.3)',
-          position: 'relative',
-        }}>
+        {/* PHOTO CIRCLE — glowing, variant-aware */}
+        <div style={photoFrameStyle}>
           {photoUrl ? (
             <img src={photoUrl} width={260} height={260} style={{ objectFit: 'cover' }} />
           ) : (
-            <svg width="150" height="160" viewBox="0 0 100 110" fill="none">
-              <path 
-                d="M50 0 C75 0 95 10 95 30 C95 65 70 100 50 110 C30 100 5 65 5 30 C5 10 25 0 50 0 Z" 
-                fill={primaryColor} 
-              />
-              <path 
-                d="M20 15 C35 25 65 25 80 15 L85 28 C65 40 35 40 15 28 Z" 
-                fill={secondaryColor} 
-              />
-            </svg>
+            <div style={{
+              fontSize: 100, fontWeight: 900, color: theme.textColor,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 260, height: 260,
+              backgroundColor: theme.primary,
+            }}>
+              {name.charAt(0)}
+            </div>
           )}
         </div>
 
-        {/* Name */}
+        {/* COUNTRY row */}
         <div style={{
-          fontSize: 88,
-          fontWeight: 900,
-          color: '#ffffff',
-          letterSpacing: 4,
-          marginBottom: 16,
-          textTransform: 'uppercase',
+          fontSize: 32, color: 'rgba(255,255,255,0.8)',
+          letterSpacing: 6, marginBottom: 16, display: 'flex', alignItems: 'center',
         }}>
-          {name.toUpperCase().slice(0, 14)}
+          <CircularBadge primary={theme.primary} secondary={theme.secondary} />
+          {countryName.toUpperCase()}
         </div>
 
-        {/* Country */}
+        {/* NAME */}
         <div style={{
-          fontSize: 44,
-          color: '#f0b429',
-          marginBottom: 40,
-          letterSpacing: 2,
+          fontSize: name.length > 10 ? 72 : 92,
+          fontWeight: 900, color: '#ffffff',
+          letterSpacing: 4, marginBottom: 20,
+          display: 'flex', textShadow: `0 2px 20px ${theme.primary}88`,
         }}>
-          {`${flagEmoji} ${countryName}`}
+          {name}
         </div>
 
-        {/* Fan ID */}
+        {/* FAN ID */}
         <div style={{
-          fontSize: 26,
-          color: '#555',
-          letterSpacing: 4,
-          marginBottom: 40,
+          fontSize: 22, color: 'rgba(255,255,255,0.35)',
+          letterSpacing: 5, marginBottom: 10, display: 'flex',
           fontFamily: 'monospace',
         }}>
-          {`FAN ID: ${fanId}`}
+          FAN ID · {fanId}
         </div>
 
-        {/* Level Badge */}
+        {/* LEVEL BADGE */}
         <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          padding: '12px 32px',
-          border: `2px solid ${levelBadge.color}`,
-          borderRadius: 40,
-          marginBottom: 70,
-          background: `${levelBadge.color}20`,
+          display: 'flex', alignItems: 'center',
+          padding: '10px 28px',
+          border: `2px solid ${badgeColor}`,
+          borderRadius: 40, marginBottom: 60,
+          background: `${badgeColor}20`,
         }}>
-          <span style={{ fontSize: 28 }}>{levelBadge.icon}</span>
-          <span style={{ fontSize: 26, fontWeight: 700, color: levelBadge.color, letterSpacing: 3 }}>
-            {levelBadge.label}
+          {fanLevel === 'LEGEND' ? (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={badgeColor} strokeWidth="2.5" style={{ marginRight: 10, display: 'flex' }}>
+              <path d="M6 3h12l4 6-10 12L2 9z"/>
+            </svg>
+          ) : (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={badgeColor} strokeWidth="2.5" style={{ marginRight: 10, display: 'flex' }}>
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+          )}
+          <span style={{ fontSize: 22, fontWeight: 700, color: badgeColor, letterSpacing: 3, display: 'flex' }}>
+            {fanLevel}
           </span>
         </div>
 
-        {/* Stats row */}
+        {/* STATS ROW */}
         <div style={{
-          display: 'flex',
-          gap: 0,
-          width: '100%',
-          marginBottom: 70,
+          display: 'flex', width: '100%', marginBottom: 50,
           background: 'rgba(255,255,255,0.04)',
-          borderRadius: 20,
+          borderRadius: 16,
           border: '1px solid rgba(255,255,255,0.08)',
           overflow: 'hidden',
         }}>
           {[
-            { value: `${totalPoints}`, label: 'POINTS' },
-            { value: `${accuracyPct}%`, label: 'ACCURACY' },
-            { value: `🔥 ${streakCount}`, label: 'STREAK' },
-            { value: `👥 ${referralCount}`, label: 'REFERRED' },
+            { value: totalPoints,         label: 'PREDICTIONS' },
+            { value: `${accuracyPct}%`,   label: 'ACCURACY' },
+            { value: streakCount, label: 'STREAK', isStreak: true },
+            { value: referralCount, label: 'REFERRED', isReferred: true },
           ].map((stat, i) => (
             <div key={stat.label} style={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              padding: '32px 8px',
+              flex: 1, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', padding: '28px 8px',
               borderRight: i < 3 ? '1px solid rgba(255,255,255,0.06)' : 'none',
             }}>
-              <div style={{ fontSize: 44, fontWeight: 800, color: '#fff', marginBottom: 8 }}>
-                {stat.value}
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
+                {stat.isStreak && (
+                  <svg width="30" height="30" viewBox="0 0 24 24" fill="#ef4444" style={{ marginRight: 6, display: 'flex' }}>
+                    <path d="M17.66 11.57C17.43 8 15.34 5.08 12.33 3.75c-.2-.09-.4.07-.36.29.35 1.87-.29 4.13-1.8 5.64C8.66 11.19 8 13.13 8 15.5c0 2.2 1.3 4.2 3.3 4.9.22.08.4-.12.34-.35-.29-1.07-.15-2.24.46-3.23.4-.64 1.02-1.08 1.6-1.6 1.4-1.26 2.3-3.06 2.3-4.83.01-.28-.01-.56-.04-.82z"/>
+                  </svg>
+                )}
+                {stat.isReferred && (
+                  <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" style={{ marginRight: 6, display: 'flex' }}>
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                )}
+                <span style={{ fontSize: 40, fontWeight: 800, color: '#fff', display: 'flex' }}>
+                  {stat.value}
+                </span>
               </div>
-              <div style={{ fontSize: 20, color: '#555', letterSpacing: 2 }}>
+              <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.4)', letterSpacing: 2, display: 'flex' }}>
                 {stat.label}
               </div>
             </div>
           ))}
         </div>
 
-        {/* Spacer */}
-        <div style={{ flex: 1 }} />
+        {/* SPACER */}
+        <div style={{ flex: 1, display: 'flex' }} />
 
-        {/* Referral code */}
+        {/* REFERRAL LINK */}
         {referralCode && (
           <div style={{
-            fontSize: 28,
-            color: '#444',
-            letterSpacing: 3,
-            marginBottom: 20,
+            fontSize: 26, color: 'rgba(255,255,255,0.35)',
+            letterSpacing: 3, marginBottom: 16, display: 'flex',
           }}>
-            {`ohmykick.com/${referralCode}`}
+            ohmykick.com/{referralCode}
           </div>
         )}
 
-        {/* Bottom border + wordmark */}
+        {/* BOTTOM WORDMARK */}
         <div style={{
-          width: '100%',
-          borderTop: '1px solid rgba(240,180,41,0.3)',
-          paddingTop: 20,
-          display: 'flex',
-          justifyContent: 'center',
+          width: '100%', paddingTop: 16, display: 'flex', justifyContent: 'center',
+          borderTop: `1px solid ${theme.accent}44`,
         }}>
-          <div style={{ fontSize: 28, color: '#333', letterSpacing: 6 }}>
+          <div style={{ fontSize: 22, color: 'rgba(255,255,255,0.25)', letterSpacing: 8, display: 'flex' }}>
             OHMYKICK
           </div>
         </div>
-
-        {/* Gold accent bottom line */}
-        <div style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: '4px',
-          background: 'linear-gradient(90deg, transparent, #f0b429, #ffd166, #f0b429, transparent)',
-        }} />
       </div>
     ),
-    {
-      width: 1080,
-      height: 1920,
-    }
+    { width: 1080, height: 1920 }
   );
 }

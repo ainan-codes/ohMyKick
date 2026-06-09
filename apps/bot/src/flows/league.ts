@@ -23,9 +23,9 @@ export async function handleLeagueMenuRequest(user: User): Promise<BotResponse> 
 
   return {
     messages: [{
-      kind: 'interactive_list',
+      kind: 'list',
       text: msg,
-      listTitle: 'Options',
+      buttonLabel: 'Options',
       sections: [{
         title: 'League Options',
         rows: [

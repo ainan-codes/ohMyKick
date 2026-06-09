@@ -53,6 +53,7 @@ export async function pollActiveMatches(): Promise<void> {
         console.log(`[Poll] Predictions locked for ${match.home_team} vs ${match.away_team}`);
       }
 
+
       // Match finished — trigger result pipeline
       const FINISHED_STATUSES = ['FT', 'AET', 'P'];
       if (FINISHED_STATUSES.includes(apiStatus) && match.status !== 'FINISHED') {
