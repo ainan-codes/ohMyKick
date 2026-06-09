@@ -40,8 +40,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // ─── Match polling scheduler ───────────────────────────────────
-// Every 2 minutes during tournament hours (Commented out temporarily to change API Key)
-/*
+// Every 2 minutes during tournament hours
 cron.schedule('*/2 * * * *', async () => {
   try {
     await pollActiveMatches();
@@ -49,7 +48,6 @@ cron.schedule('*/2 * * * *', async () => {
     console.error('[Cron pollMatches]', err.message);
   }
 });
-*/
 
 // ─── Start server ──────────────────────────────────────────────
 const start = async () => {
