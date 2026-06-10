@@ -7,9 +7,15 @@ const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 
 export const bot = new Telegraf(TG_TOKEN);
 
+function escapeMarkdown(text: string): string {
+  if (!text) return text;
+  // Escape underscores that are part of words (e.g. GB_SCT -> GB\_SCT) to prevent Markdown parser failures
+  return text.replace(/([a-zA-Z0-9])_([a-zA-Z0-9])/g, '$1\\_$2');
+}
+
 export async function sendTgText(chatId: number | string, text: string): Promise<void> {
   try {
-    await bot.telegram.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+    await bot.telegram.sendMessage(chatId, escapeMarkdown(text), { parse_mode: 'Markdown' });
   } catch (err: any) {
     console.error('[TG sendText]', err.message);
   }
@@ -38,7 +44,7 @@ export async function sendTgButtons(
       )
     );
 
-    await bot.telegram.sendMessage(chatId, text, {
+    await bot.telegram.sendMessage(chatId, escapeMarkdown(text), {
       parse_mode: 'Markdown',
       reply_markup: keyboard.reply_markup,
     });
@@ -66,7 +72,7 @@ export async function sendTgPhoto(
       : undefined;
 
     await bot.telegram.sendPhoto(chatId, photo as any, {
-      caption: caption?.slice(0, 1024),
+      caption: caption ? escapeMarkdown(caption).slice(0, 1024) : undefined,
       parse_mode: 'Markdown',
       reply_markup: replyMarkup,
     });
