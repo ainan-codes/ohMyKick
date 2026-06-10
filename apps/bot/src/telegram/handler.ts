@@ -226,20 +226,13 @@ function mapRemoteResponse(apiResponse: any): BotResponse {
     if (msg.type === 'text') {
       if (msg.text.includes('*OhMyKick Menu*') && msg.text.includes('*predict*')) {
         return {
-          kind: 'list',
+          kind: 'buttons',
           text: `⚽ *OhMyKick Menu*\n\nHere's what you can do:`,
-          sections: [
-            {
-              title: '',
-              rows: [
-                { id: 'predict', title: '🔮 Predict' },
-                { id: 'passport', title: '🪪 Passport' },
-                { id: 'stats', title: '📊 Stats' },
-                { id: 'nations', title: '🌍 Nations' },
-                { id: 'referral', title: '🔗 Referral' },
-                { id: 'profile', title: '👤 Profile' }
-              ]
-            }
+          buttons: [
+            [{ id: 'predict', label: '🔮 Predict' }],
+            [{ id: 'passport', label: '🪪 Passport' }, { id: 'stats', label: '📊 Stats' }],
+            [{ id: 'nations', label: '🌍 Nations' }, { id: 'leaderboard', label: '🏆 Leaderboard' }],
+            [{ id: 'referral', label: '🔗 Referral' }, { id: 'profile', label: '👤 Profile' }]
           ]
         };
       }

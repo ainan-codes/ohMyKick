@@ -38,7 +38,7 @@ export interface BotResponse {
 
 export type BotMessage =
   | { kind: 'text'; text: string }
-  | { kind: 'buttons'; text: string; buttons: { id: string; label: string }[] }
+  | { kind: 'buttons'; text: string; buttons: { id: string; label: string }[] | { id: string; label: string }[][] }
   | { kind: 'list'; text: string; buttonLabel: string; sections: ListSection[] }
   | { kind: 'image'; url: string; caption?: string; buttons?: { id: string; label: string }[][] };
 

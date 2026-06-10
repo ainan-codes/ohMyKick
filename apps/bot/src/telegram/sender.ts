@@ -18,14 +18,18 @@ export async function sendTgText(chatId: number | string, text: string): Promise
 export async function sendTgButtons(
   chatId: number | string,
   text: string,
-  buttons: { id: string; label: string }[],
+  buttons: { id: string; label: string }[] | { id: string; label: string }[][],
   columns = 3
 ): Promise<void> {
   try {
-    // Chunk buttons into rows
-    const rows: { id: string; label: string }[][] = [];
-    for (let i = 0; i < buttons.length; i += columns) {
-      rows.push(buttons.slice(i, i + columns));
+    let rows: { id: string; label: string }[][] = [];
+    if (buttons.length > 0 && Array.isArray(buttons[0])) {
+      rows = buttons as { id: string; label: string }[][];
+    } else {
+      const flatButtons = buttons as { id: string; label: string }[];
+      for (let i = 0; i < flatButtons.length; i += columns) {
+        rows.push(flatButtons.slice(i, i + columns));
+      }
     }
 
     const keyboard = Markup.inlineKeyboard(

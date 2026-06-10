@@ -438,17 +438,28 @@ async function processNotifyJob(job: { data: any }) {
 
   // Send via Telegram (always free, no template restrictions)
   if (user.tg_id) {
-    const buttons =
-      type !== 'passport' && type !== 'recap'
-        ? [
-            [
-              { id: 'predict_now', label: '⚽ Predict Next Match' },
-              { id: 'referral_info', label: '📨 Invite Friends' },
-            ],
-          ]
-        : [[{ id: 'predict_now', label: '⚽ Predict Now' }]];
-
-    await sendTgPhoto(parseInt(user.tg_id), posterUrl, caption, buttons);
+    await sendTgPhoto(parseInt(user.tg_id), posterUrl, caption);
+    
+    // Follow-up UX Menu based on poster type
+    if (type === 'prematch') {
+      await sendTgButtons(parseInt(user.tg_id), '⚽ What would you like to do next?', [
+        [{ id: 'predict', label: '🔮 Predict Another Match' }],
+        [{ id: 'passport', label: '🪪 My Passport' }, { id: 'stats', label: '📊 My Stats' }],
+        [{ id: 'leaderboard', label: '🏆 Leaderboard' }, { id: 'nations', label: '🌍 Nations' }],
+        [{ id: 'referral', label: '🔗 Referral' }]
+      ]);
+    } else if (type === 'result') {
+      await sendTgButtons(parseInt(user.tg_id), '🔥 Ready for the next fixture?', [
+        [{ id: 'predict', label: '🔮 Predict Next Match' }]
+      ]);
+    } else {
+      await sendTgButtons(parseInt(user.tg_id), '⚽ What would you like to do next?', [
+        [{ id: 'predict', label: '🔮 Predict Next Match' }],
+        [{ id: 'passport', label: '🪪 My Passport' }, { id: 'stats', label: '📊 My Stats' }],
+        [{ id: 'leaderboard', label: '🏆 Leaderboard' }, { id: 'nations', label: '🌍 Nations' }],
+        [{ id: 'referral', label: '🔗 Referral' }]
+      ]);
+    }
     if (predictionId && type === 'prematch') {
       await markPosterSent(predictionId, 'prematch', 'tg');
     } else if (predictionId && type === 'result') {
@@ -522,16 +533,17 @@ async function processNextMatchPromptJob(job: { data: any }) {
   const matchDisplay = formatMatchForDisplay(nextMatch);
   const kickoffTime = formatKickoffTime(nextMatch);
   const text =
-    `🔔 *Next match is coming up!*\n\n` +
-    `⚽ *${matchDisplay}*\n` +
-    `🕒 Kicks off at ${kickoffTime}\n\n` +
-    `Don't forget to lock in your prediction before kickoff! ⏰`;
+    `⚽ *New Match Available*\n\n` +
+    `*${matchDisplay}*\n\n` +
+    `Kickoff:\n` +
+    `${kickoffTime}\n\n` +
+    `Ready to predict?`;
 
   if (user.tg_id) {
     await sendTgButtons(
       user.tg_id,
       text,
-      [{ id: 'predict_now', label: '⚽ Predict Now' }],
+      [{ id: 'predict', label: '🔮 Predict Now' }],
       1
     );
     console.log(`[NextMatchPrompt] Sent TG next-match prompt to user ${userId}`);
