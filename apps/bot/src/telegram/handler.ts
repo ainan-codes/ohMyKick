@@ -264,7 +264,7 @@ function mapRemoteResponse(apiResponse: any): BotResponse {
             [{ id: 'predict', label: '🔮 Predict' }],
             [{ id: 'passport', label: '🪪 Passport' }, { id: 'stats', label: '📊 Stats' }],
             [{ id: 'leaderboard', label: '🏆 Leaderboard' }, { id: 'nations', label: '🌍 Nations' }],
-            [{ id: 'referral', label: '🔗 Referral' }]
+            [{ id: 'referral', label: '🔗 Referral' }, { id: 'profile', label: '👤 Profile' }]
           ]
         };
       }
@@ -327,7 +327,7 @@ function mapRemoteResponse(apiResponse: any): BotResponse {
           [{ id: 'predict', label: '🔮 Predict' }],
           [{ id: 'passport', label: '🪪 Passport' }, { id: 'stats', label: '📊 Stats' }],
           [{ id: 'leaderboard', label: '🏆 Leaderboard' }, { id: 'nations', label: '🌍 Nations' }],
-          [{ id: 'referral', label: '🔗 Referral' }]
+          [{ id: 'referral', label: '🔗 Referral' }, { id: 'profile', label: '👤 Profile' }]
         ]
       });
     }

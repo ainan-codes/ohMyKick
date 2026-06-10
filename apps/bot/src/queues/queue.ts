@@ -446,7 +446,7 @@ async function processNotifyJob(job: { data: any }) {
         [{ id: 'predict', label: '🔮 Predict' }],
         [{ id: 'passport', label: '🪪 Passport' }, { id: 'stats', label: '📊 Stats' }],
         [{ id: 'leaderboard', label: '🏆 Leaderboard' }, { id: 'nations', label: '🌍 Nations' }],
-        [{ id: 'referral', label: '🔗 Referral' }]
+        [{ id: 'referral', label: '🔗 Referral' }, { id: 'profile', label: '👤 Profile' }]
       ]);
     } else if (type === 'result') {
       await sendTgButtons(parseInt(user.tg_id), '🔥 Ready for the next fixture?', [
@@ -457,7 +457,7 @@ async function processNotifyJob(job: { data: any }) {
         [{ id: 'predict', label: '🔮 Predict' }],
         [{ id: 'passport', label: '🪪 Passport' }, { id: 'stats', label: '📊 Stats' }],
         [{ id: 'leaderboard', label: '🏆 Leaderboard' }, { id: 'nations', label: '🌍 Nations' }],
-        [{ id: 'referral', label: '🔗 Referral' }]
+        [{ id: 'referral', label: '🔗 Referral' }, { id: 'profile', label: '👤 Profile' }]
       ]);
     }
     if (predictionId && type === 'prematch') {
