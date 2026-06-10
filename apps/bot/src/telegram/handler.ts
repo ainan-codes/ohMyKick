@@ -1,5 +1,5 @@
 import { bot } from '../telegram/sender.js';
-import { getUserByTgId, createUser, updateUser } from '../db/users.js';
+import { getUserByTgId, createUser, updateUser, updateConversationState } from '../db/users.js';
 import { processMessage } from '../state-machine/index.js';
 import { handleOnboardingPhotoUploaded } from '../flows/onboarding.js';
 import { sendTgText, sendTgButtons, sendTgPhoto } from '../telegram/sender.js';
@@ -42,12 +42,24 @@ export function registerTelegramHandler(app: FastifyInstance) {
       return;
     }
 
-    const response = await processMessage(
-      user,
-      { type: 'text', text: 'start' },
-      'tg'
-    );
-    await sendTelegramResponse(ctx.chat.id, response);
+    if (process.env.USE_OHMYKICK_API === 'true') {
+      try {
+        const apiResponse = await callRemoteAPI(tgId, 'start', {});
+        await updateConversationState(user.id, JSON.stringify(apiResponse.sessionState));
+        const mapped = mapRemoteResponse(apiResponse);
+        await sendTelegramResponse(ctx.chat.id, mapped);
+      } catch (err: any) {
+        console.error('[TG start remote]', err.message);
+        await ctx.reply('⚠️ Transient connection error with OhMyKick server. Please try again.');
+      }
+    } else {
+      const response = await processMessage(
+        user,
+        { type: 'text', text: 'start' },
+        'tg'
+      );
+      await sendTelegramResponse(ctx.chat.id, response);
+    }
   });
 
   // Text messages
@@ -61,8 +73,26 @@ export function registerTelegramHandler(app: FastifyInstance) {
       return;
     }
 
-    const response = await processMessage(user, { type: 'text', text }, 'tg');
-    await sendTelegramResponse(ctx.chat.id, response);
+    if (process.env.USE_OHMYKICK_API === 'true') {
+      try {
+        let sessionState: any = {};
+        if (user.conversation_state && user.conversation_state.startsWith('{')) {
+          try {
+            sessionState = JSON.parse(user.conversation_state);
+          } catch (e) {}
+        }
+        const apiResponse = await callRemoteAPI(tgId, text, sessionState);
+        await updateConversationState(user.id, JSON.stringify(apiResponse.sessionState));
+        const mapped = mapRemoteResponse(apiResponse);
+        await sendTelegramResponse(ctx.chat.id, mapped);
+      } catch (err: any) {
+        console.error('[TG text remote]', err.message);
+        await ctx.reply('⚠️ Transient connection error with OhMyKick server. Please try again.');
+      }
+    } else {
+      const response = await processMessage(user, { type: 'text', text }, 'tg');
+      await sendTelegramResponse(ctx.chat.id, response);
+    }
   });
 
   // Callback query (inline keyboard button taps)
@@ -76,9 +106,31 @@ export function registerTelegramHandler(app: FastifyInstance) {
     const user = await getUserByTgId(tgId);
     if (!user) return;
 
-    const response = await processMessage(user, { type: 'button_reply', text: data }, 'tg');
-    if (ctx.chat) {
-      await sendTelegramResponse(ctx.chat.id, response);
+    if (process.env.USE_OHMYKICK_API === 'true') {
+      try {
+        let sessionState: any = {};
+        if (user.conversation_state && user.conversation_state.startsWith('{')) {
+          try {
+            sessionState = JSON.parse(user.conversation_state);
+          } catch (e) {}
+        }
+        const apiResponse = await callRemoteAPI(tgId, data, sessionState);
+        await updateConversationState(user.id, JSON.stringify(apiResponse.sessionState));
+        const mapped = mapRemoteResponse(apiResponse);
+        if (ctx.chat) {
+          await sendTelegramResponse(ctx.chat.id, mapped);
+        }
+      } catch (err: any) {
+        console.error('[TG callback remote]', err.message);
+        if (ctx.chat) {
+          await ctx.reply('⚠️ Transient connection error with OhMyKick server. Please try again.');
+        }
+      }
+    } else {
+      const response = await processMessage(user, { type: 'button_reply', text: data }, 'tg');
+      if (ctx.chat) {
+        await sendTelegramResponse(ctx.chat.id, response);
+      }
     }
   });
 
@@ -86,8 +138,23 @@ export function registerTelegramHandler(app: FastifyInstance) {
   bot.on('photo', async (ctx) => {
     const tgId = ctx.from.id.toString();
     const user = await getUserByTgId(tgId);
+    if (!user) return;
 
-    if (!user || user.conversation_state !== 'ONBOARDING_PHOTO') return;
+    let sessionState: any = {};
+    if (user.conversation_state && user.conversation_state.startsWith('{')) {
+      try {
+        sessionState = JSON.parse(user.conversation_state);
+      } catch (e) {}
+    }
+
+    const isRemoteOnboardingPhoto = sessionState.conversationState === 'ONBOARDING_PHOTO';
+    const isLocalOnboardingPhoto = user.conversation_state === 'ONBOARDING_PHOTO';
+
+    if (process.env.USE_OHMYKICK_API === 'true') {
+      if (!isRemoteOnboardingPhoto) return;
+    } else {
+      if (!isLocalOnboardingPhoto) return;
+    }
 
     try {
       // Get largest photo version
@@ -108,14 +175,96 @@ export function registerTelegramHandler(app: FastifyInstance) {
       });
       const { data: urlData } = supabase.storage.from('photos').getPublicUrl(path);
 
-      const botResponse = await handleOnboardingPhotoUploaded(user, urlData.publicUrl);
-      await sendTelegramResponse(ctx.chat.id, botResponse);
+      await updateUser(user.id, { photo_url: urlData.publicUrl });
+
+      if (process.env.USE_OHMYKICK_API === 'true') {
+        const apiResponse = await callRemoteAPI(tgId, 'skip_photo', sessionState);
+        await updateConversationState(user.id, JSON.stringify(apiResponse.sessionState));
+        const mapped = mapRemoteResponse(apiResponse);
+        await sendTelegramResponse(ctx.chat.id, mapped);
+      } else {
+        const botResponse = await handleOnboardingPhotoUploaded(user, urlData.publicUrl);
+        await sendTelegramResponse(ctx.chat.id, botResponse);
+      }
     } catch (err: any) {
       console.error('[TG photo handler]', err.message);
       await ctx.reply('⚠️ Failed to upload photo. You can skip for now and add it later.');
     }
   });
 }
+
+// ─── Remote API Helpers ─────────────────────────────────────
+
+async function callRemoteAPI(userId: string, message: string, sessionState: any = {}): Promise<any> {
+  const url = 'https://www.ohmykick.com/api/bot/message';
+  const payload = {
+    userId,
+    channel: 'telegram',
+    message,
+    timezone: 'Asia/Calcutta',
+    sessionState,
+  };
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Remote API error: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+function mapRemoteResponse(apiResponse: any): BotResponse {
+  const messages = apiResponse.messages || [];
+  const mappedMessages = messages.map((msg: any) => {
+    if (msg.type === 'text') {
+      return { kind: 'text', text: msg.text };
+    }
+    if (msg.type === 'buttons') {
+      return {
+        kind: 'buttons',
+        text: msg.text,
+        buttons: msg.buttons.map((b: any) => ({ id: b.id, label: b.title })),
+      };
+    }
+    if (msg.type === 'list') {
+      return {
+        kind: 'list',
+        text: msg.text,
+        sections: [
+          {
+            title: '',
+            rows: msg.listItems.map((item: any) => ({
+              id: item.id,
+              title: item.title,
+            })),
+          },
+        ],
+      };
+    }
+    if (msg.type === 'image') {
+      let imageUrl = msg.imageUrl;
+      if (imageUrl.startsWith('/')) {
+        imageUrl = `https://www.ohmykick.com${imageUrl}`;
+      }
+      return {
+        kind: 'image',
+        url: imageUrl,
+        caption: '',
+      };
+    }
+    return { kind: 'text', text: '' };
+  });
+
+  return { messages: mappedMessages };
+}
+
 
 // ─── Response dispatcher ──────────────────────────────────────
 
