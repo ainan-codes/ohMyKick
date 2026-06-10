@@ -443,19 +443,19 @@ async function processNotifyJob(job: { data: any }) {
     // Follow-up UX Menu based on poster type
     if (type === 'prematch') {
       await sendTgButtons(parseInt(user.tg_id), '⚽ What would you like to do next?', [
-        [{ id: 'predict', label: '🔮 Predict Another Match' }],
-        [{ id: 'passport', label: '🪪 My Passport' }, { id: 'stats', label: '📊 My Stats' }],
+        [{ id: 'predict', label: '🔮 Predict' }],
+        [{ id: 'passport', label: '🪪 Passport' }, { id: 'stats', label: '📊 Stats' }],
         [{ id: 'leaderboard', label: '🏆 Leaderboard' }, { id: 'nations', label: '🌍 Nations' }],
         [{ id: 'referral', label: '🔗 Referral' }]
       ]);
     } else if (type === 'result') {
       await sendTgButtons(parseInt(user.tg_id), '🔥 Ready for the next fixture?', [
-        [{ id: 'predict', label: '🔮 Predict Next Match' }]
+        [{ id: 'predict', label: '🔮 Predict' }]
       ]);
     } else {
       await sendTgButtons(parseInt(user.tg_id), '⚽ What would you like to do next?', [
-        [{ id: 'predict', label: '🔮 Predict Next Match' }],
-        [{ id: 'passport', label: '🪪 My Passport' }, { id: 'stats', label: '📊 My Stats' }],
+        [{ id: 'predict', label: '🔮 Predict' }],
+        [{ id: 'passport', label: '🪪 Passport' }, { id: 'stats', label: '📊 Stats' }],
         [{ id: 'leaderboard', label: '🏆 Leaderboard' }, { id: 'nations', label: '🌍 Nations' }],
         [{ id: 'referral', label: '🔗 Referral' }]
       ]);
@@ -543,8 +543,7 @@ async function processNextMatchPromptJob(job: { data: any }) {
     await sendTgButtons(
       user.tg_id,
       text,
-      [{ id: 'predict', label: '🔮 Predict Now' }],
-      1
+      [[{ id: 'predict', label: '🔮 Predict' }]]
     );
     console.log(`[NextMatchPrompt] Sent TG next-match prompt to user ${userId}`);
   }

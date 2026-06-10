@@ -50,7 +50,7 @@ export function registerTelegramHandler(app: FastifyInstance) {
         await sendTelegramResponse(ctx.chat.id, mapped);
       } catch (err: any) {
         console.error('[TG start remote]', err.message);
-        await ctx.reply('⚠️ Transient connection error with OhMyKick server. Please try again.');
+        await sendTelegramResponse(ctx.chat.id, getErrorKeyboard('start'));
       }
     } else {
       const response = await processMessage(
@@ -87,7 +87,7 @@ export function registerTelegramHandler(app: FastifyInstance) {
         await sendTelegramResponse(ctx.chat.id, mapped);
       } catch (err: any) {
         console.error('[TG text remote]', err.message);
-        await ctx.reply('⚠️ Transient connection error with OhMyKick server. Please try again.');
+        await sendTelegramResponse(ctx.chat.id, getErrorKeyboard(text));
       }
     } else {
       const response = await processMessage(user, { type: 'text', text }, 'tg');
@@ -101,7 +101,12 @@ export function registerTelegramHandler(app: FastifyInstance) {
     await ctx.answerCbQuery().catch(() => {});
 
     const tgId = ctx.from.id.toString();
-    const data = (ctx.callbackQuery as any).data ?? '';
+    let data = (ctx.callbackQuery as any).data ?? '';
+
+    // Handle retry callback prefix
+    if (data.startsWith('retry:')) {
+      data = data.split('retry:')[1] || 'menu';
+    }
 
     const user = await getUserByTgId(tgId);
     if (!user) return;
@@ -123,7 +128,7 @@ export function registerTelegramHandler(app: FastifyInstance) {
       } catch (err: any) {
         console.error('[TG callback remote]', err.message);
         if (ctx.chat) {
-          await ctx.reply('⚠️ Transient connection error with OhMyKick server. Please try again.');
+          await sendTelegramResponse(ctx.chat.id, getErrorKeyboard(data));
         }
       }
     } else {
@@ -178,17 +183,26 @@ export function registerTelegramHandler(app: FastifyInstance) {
       await updateUser(user.id, { photo_url: urlData.publicUrl });
 
       if (process.env.USE_OHMYKICK_API === 'true') {
-        const apiResponse = await callRemoteAPI(tgId, 'skip_photo', sessionState);
-        await updateConversationState(user.id, JSON.stringify(apiResponse.sessionState));
-        const mapped = mapRemoteResponse(apiResponse);
-        await sendTelegramResponse(ctx.chat.id, mapped);
+        try {
+          const apiResponse = await callRemoteAPI(tgId, 'skip_photo', sessionState);
+          await updateConversationState(user.id, JSON.stringify(apiResponse.sessionState));
+          const mapped = mapRemoteResponse(apiResponse);
+          await sendTelegramResponse(ctx.chat.id, mapped);
+        } catch (err: any) {
+          console.error('[TG photo remote]', err.message);
+          await sendTelegramResponse(ctx.chat.id, getErrorKeyboard('skip_photo'));
+        }
       } else {
         const botResponse = await handleOnboardingPhotoUploaded(user, urlData.publicUrl);
         await sendTelegramResponse(ctx.chat.id, botResponse);
       }
     } catch (err: any) {
       console.error('[TG photo handler]', err.message);
-      await ctx.reply('⚠️ Failed to upload photo. You can skip for now and add it later.');
+      if (process.env.USE_OHMYKICK_API === 'true') {
+        await sendTelegramResponse(ctx.chat.id, getErrorKeyboard('skip_photo'));
+      } else {
+        await ctx.reply('⚠️ Failed to upload photo. You can skip for now and add it later.');
+      }
     }
   });
 }
@@ -220,9 +234,27 @@ async function callRemoteAPI(userId: string, message: string, sessionState: any 
   return response.json();
 }
 
+function getErrorKeyboard(lastCommand: string): BotResponse {
+  const retryData = `retry:${lastCommand.substring(0, 50)}`;
+  return {
+    messages: [
+      {
+        kind: 'buttons',
+        text: '⚠️ Something went wrong.',
+        buttons: [
+          [
+            { id: retryData, label: '🔄 Retry' },
+            { id: 'menu', label: '🏠 Main Menu' }
+          ]
+        ]
+      }
+    ]
+  };
+}
+
 function mapRemoteResponse(apiResponse: any): BotResponse {
   const messages = apiResponse.messages || [];
-  const mappedMessages = messages.map((msg: any) => {
+  let mappedMessages = messages.map((msg: any) => {
     if (msg.type === 'text') {
       if (msg.text.includes('*OhMyKick Menu*') && msg.text.includes('*predict*')) {
         return {
@@ -231,8 +263,8 @@ function mapRemoteResponse(apiResponse: any): BotResponse {
           buttons: [
             [{ id: 'predict', label: '🔮 Predict' }],
             [{ id: 'passport', label: '🪪 Passport' }, { id: 'stats', label: '📊 Stats' }],
-            [{ id: 'nations', label: '🌍 Nations' }, { id: 'leaderboard', label: '🏆 Leaderboard' }],
-            [{ id: 'referral', label: '🔗 Referral' }, { id: 'profile', label: '👤 Profile' }]
+            [{ id: 'leaderboard', label: '🏆 Leaderboard' }, { id: 'nations', label: '🌍 Nations' }],
+            [{ id: 'referral', label: '🔗 Referral' }]
           ]
         };
       }
@@ -268,11 +300,38 @@ function mapRemoteResponse(apiResponse: any): BotResponse {
       return {
         kind: 'image',
         url: imageUrl,
-        caption: '',
+        caption: msg.caption || msg.text || '',
+        buttons: msg.buttons ? msg.buttons.map((b: any) => ({ id: b.id, label: b.title })) : undefined,
       };
     }
     return { kind: 'text', text: '' };
   });
+
+  // Filter out any empty text messages to keep responses clean
+  mappedMessages = mappedMessages.filter((msg: any) => msg.kind !== 'text' || msg.text !== '');
+
+  // Automatically append the Telegram navigation menu when conversationState is IDLE
+  const sessionState = apiResponse.sessionState || {};
+  if (sessionState.conversationState === 'IDLE') {
+    // Check if the menu is already in the list
+    const hasMenuAlready = mappedMessages.some((msg: any) =>
+      msg.kind === 'buttons' &&
+      (msg.text?.includes('Menu') || (Array.isArray(msg.buttons) && msg.buttons.flat().some((b: any) => b.id === 'predict')))
+    );
+
+    if (!hasMenuAlready) {
+      mappedMessages.push({
+        kind: 'buttons',
+        text: '⚽ *OhMyKick Menu*',
+        buttons: [
+          [{ id: 'predict', label: '🔮 Predict' }],
+          [{ id: 'passport', label: '🪪 Passport' }, { id: 'stats', label: '📊 Stats' }],
+          [{ id: 'leaderboard', label: '🏆 Leaderboard' }, { id: 'nations', label: '🌍 Nations' }],
+          [{ id: 'referral', label: '🔗 Referral' }]
+        ]
+      });
+    }
+  }
 
   return { messages: mappedMessages };
 }
