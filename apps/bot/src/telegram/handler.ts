@@ -224,6 +224,25 @@ function mapRemoteResponse(apiResponse: any): BotResponse {
   const messages = apiResponse.messages || [];
   const mappedMessages = messages.map((msg: any) => {
     if (msg.type === 'text') {
+      if (msg.text.includes('*OhMyKick Menu*') && msg.text.includes('*predict*')) {
+        return {
+          kind: 'list',
+          text: `⚽ *OhMyKick Menu*\n\nHere's what you can do:`,
+          sections: [
+            {
+              title: '',
+              rows: [
+                { id: 'predict', title: '🔮 Predict' },
+                { id: 'passport', title: '🪪 Passport' },
+                { id: 'stats', title: '📊 Stats' },
+                { id: 'nations', title: '🌍 Nations' },
+                { id: 'referral', title: '🔗 Referral' },
+                { id: 'profile', title: '👤 Profile' }
+              ]
+            }
+          ]
+        };
+      }
       return { kind: 'text', text: msg.text };
     }
     if (msg.type === 'buttons') {
