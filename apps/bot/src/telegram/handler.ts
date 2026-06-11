@@ -81,6 +81,21 @@ export function registerTelegramHandler(app: FastifyInstance) {
             sessionState = JSON.parse(user.conversation_state);
           } catch (e) {}
         }
+
+        // Intercept local commands (text matching keywords)
+        const lowerText = text.toLowerCase().trim();
+        const cleanText = lowerText.startsWith('/') ? lowerText.slice(1) : lowerText;
+        const isLeaderboard = ['rank', 'leaderboard', 'standings', 'country war'].some(k => cleanText.startsWith(k)) || cleanText === 'view_leaderboard';
+        const isLeague = ['league', 'leagues', 'friend league'].some(k => cleanText.startsWith(k)) || cleanText === 'view_leagues';
+        const isRecap = ['recap', 'personality', 'final recap', 'recap card'].some(k => cleanText.startsWith(k)) || cleanText === 'view_recap';
+
+        if (isLeaderboard || isLeague || isRecap) {
+          let response = await processMessage(user, { type: 'text', text }, 'tg');
+          response = appendLocalMenu(response);
+          await sendTelegramResponse(ctx.chat.id, response);
+          return;
+        }
+
         const apiResponse = await callRemoteAPI(tgId, text, sessionState);
         await updateConversationState(user.id, JSON.stringify(apiResponse.sessionState));
         const mapped = mapRemoteResponse(apiResponse);
@@ -119,6 +134,18 @@ export function registerTelegramHandler(app: FastifyInstance) {
             sessionState = JSON.parse(user.conversation_state);
           } catch (e) {}
         }
+
+        // Intercept local commands
+        const localCommands = ['leaderboard', 'view_leaderboard', 'rankings', 'league', 'view_leagues', 'recap', 'view_recap'];
+        if (localCommands.includes(data)) {
+          let response = await processMessage(user, { type: 'button_reply', text: data }, 'tg');
+          response = appendLocalMenu(response);
+          if (ctx.chat) {
+            await sendTelegramResponse(ctx.chat.id, response);
+          }
+          return;
+        }
+
         const apiResponse = await callRemoteAPI(tgId, data, sessionState);
         await updateConversationState(user.id, JSON.stringify(apiResponse.sessionState));
         const mapped = mapRemoteResponse(apiResponse);
@@ -340,6 +367,32 @@ function mapRemoteResponse(apiResponse: any): BotResponse {
 
 
 // ─── Response dispatcher ──────────────────────────────────────
+
+function appendLocalMenu(response: BotResponse): BotResponse {
+  const hasMenuAlready = response.messages.some((msg: any) =>
+    msg.kind === 'buttons' &&
+    (msg.text?.includes('Menu') || (Array.isArray(msg.buttons) && msg.buttons.flat().some((b: any) => b.id === 'predict')))
+  );
+
+  if (!hasMenuAlready) {
+    return {
+      messages: [
+        ...response.messages,
+        {
+          kind: 'buttons',
+          text: '⚽ *OhMyKick Menu*',
+          buttons: [
+            [{ id: 'predict', label: '🔮 Predict' }],
+            [{ id: 'passport', label: '🪪 Passport' }, { id: 'stats', label: '📊 Stats' }],
+            [{ id: 'leaderboard', label: '🏆 Leaderboard' }, { id: 'nations', label: '🌍 Nations' }],
+            [{ id: 'referral', label: '🔗 Referral' }, { id: 'profile', label: '👤 Profile' }]
+          ]
+        }
+      ]
+    };
+  }
+  return response;
+}
 
 async function sendTelegramResponse(
   chatId: number | string,
