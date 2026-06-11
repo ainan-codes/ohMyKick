@@ -8,12 +8,10 @@ import type { FastifyInstance } from 'fastify';
 
 export function registerTelegramHandler(app: FastifyInstance) {
   // Webhook route — Fastify forwards the body to Telegraf
-  app.post('/webhook/telegram', async (req, reply) => {
-    try {
-      await bot.handleUpdate(req.body as any);
-    } catch (err) {
+  app.post('/webhook/telegram', (req, reply) => {
+    bot.handleUpdate(req.body as any).catch((err) => {
       console.error('[TG webhook] error', err);
-    }
+    });
     reply.send({ ok: true });
   });
 
@@ -45,8 +43,8 @@ export function registerTelegramHandler(app: FastifyInstance) {
     if (process.env.USE_OHMYKICK_API === 'true') {
       try {
         const apiResponse = await callRemoteAPI(tgId, 'start', {});
-        await updateConversationState(user.id, JSON.stringify(apiResponse.sessionState));
-        const mapped = mapRemoteResponse(apiResponse);
+        await syncUserSessionState(user.id, apiResponse.sessionState);
+        const mapped = mapRemoteResponse(apiResponse, 'start');
         await sendTelegramResponse(ctx.chat.id, mapped);
       } catch (err: any) {
         console.error('[TG start remote]', err.message);
@@ -75,12 +73,7 @@ export function registerTelegramHandler(app: FastifyInstance) {
 
     if (process.env.USE_OHMYKICK_API === 'true') {
       try {
-        let sessionState: any = {};
-        if (user.conversation_state && user.conversation_state.startsWith('{')) {
-          try {
-            sessionState = JSON.parse(user.conversation_state);
-          } catch (e) {}
-        }
+        const sessionState = getUserSessionState(user);
 
         // Intercept local commands (text matching keywords)
         const lowerText = text.toLowerCase().trim();
@@ -97,8 +90,8 @@ export function registerTelegramHandler(app: FastifyInstance) {
         }
 
         const apiResponse = await callRemoteAPI(tgId, text, sessionState);
-        await updateConversationState(user.id, JSON.stringify(apiResponse.sessionState));
-        const mapped = mapRemoteResponse(apiResponse);
+        await syncUserSessionState(user.id, apiResponse.sessionState);
+        const mapped = mapRemoteResponse(apiResponse, text);
         await sendTelegramResponse(ctx.chat.id, mapped);
       } catch (err: any) {
         console.error('[TG text remote]', err.message);
@@ -128,12 +121,7 @@ export function registerTelegramHandler(app: FastifyInstance) {
 
     if (process.env.USE_OHMYKICK_API === 'true') {
       try {
-        let sessionState: any = {};
-        if (user.conversation_state && user.conversation_state.startsWith('{')) {
-          try {
-            sessionState = JSON.parse(user.conversation_state);
-          } catch (e) {}
-        }
+        const sessionState = getUserSessionState(user);
 
         // Intercept local commands
         const localCommands = ['leaderboard', 'view_leaderboard', 'rankings', 'league', 'view_leagues', 'recap', 'view_recap'];
@@ -147,8 +135,8 @@ export function registerTelegramHandler(app: FastifyInstance) {
         }
 
         const apiResponse = await callRemoteAPI(tgId, data, sessionState);
-        await updateConversationState(user.id, JSON.stringify(apiResponse.sessionState));
-        const mapped = mapRemoteResponse(apiResponse);
+        await syncUserSessionState(user.id, apiResponse.sessionState);
+        const mapped = mapRemoteResponse(apiResponse, data);
         if (ctx.chat) {
           await sendTelegramResponse(ctx.chat.id, mapped);
         }
@@ -172,12 +160,7 @@ export function registerTelegramHandler(app: FastifyInstance) {
     const user = await getUserByTgId(tgId);
     if (!user) return;
 
-    let sessionState: any = {};
-    if (user.conversation_state && user.conversation_state.startsWith('{')) {
-      try {
-        sessionState = JSON.parse(user.conversation_state);
-      } catch (e) {}
-    }
+    const sessionState = getUserSessionState(user);
 
     const isRemoteOnboardingPhoto = sessionState.conversationState === 'ONBOARDING_PHOTO';
     const isLocalOnboardingPhoto = user.conversation_state === 'ONBOARDING_PHOTO';
@@ -212,8 +195,8 @@ export function registerTelegramHandler(app: FastifyInstance) {
       if (process.env.USE_OHMYKICK_API === 'true') {
         try {
           const apiResponse = await callRemoteAPI(tgId, 'skip_photo', sessionState);
-          await updateConversationState(user.id, JSON.stringify(apiResponse.sessionState));
-          const mapped = mapRemoteResponse(apiResponse);
+          await syncUserSessionState(user.id, apiResponse.sessionState);
+          const mapped = mapRemoteResponse(apiResponse, 'skip_photo');
           await sendTelegramResponse(ctx.chat.id, mapped);
         } catch (err: any) {
           console.error('[TG photo remote]', err.message);
@@ -262,6 +245,65 @@ async function callRemoteAPI(userId: string, message: string, sessionState: any 
   return response.json();
 }
 
+function getUserSessionState(user: any): any {
+  let sessionState: any = {};
+  if (user.conversation_state && user.conversation_state.startsWith('{')) {
+    try {
+      sessionState = JSON.parse(user.conversation_state);
+    } catch (e) {}
+  }
+
+  // If the session state is empty or missing key properties, reconstruct it from DB columns
+  if (!sessionState.userName || !sessionState.countryCode || !sessionState.referralCode) {
+    sessionState = {
+      conversationState: sessionState.conversationState || user.conversation_state || 'IDLE',
+      phoneNumber: sessionState.phoneNumber || (user.tg_id ? `tg-${user.tg_id}` : ''),
+      userName: sessionState.userName || user.name || 'FOOTBALL FAN',
+      countryCode: sessionState.countryCode || user.country_code || 'XX',
+      countryName: sessionState.countryName || user.country_name || 'Unknown',
+      countryFlag: sessionState.countryFlag || user.country_flag_emoji || '🌍',
+      referralCode: sessionState.referralCode || user.referral_code || generateFallbackReferralCode(),
+      fanId: sessionState.fanId || user.fan_id,
+      passportVariant: sessionState.passportVariant || 3,
+      preferredLanguage: sessionState.preferredLanguage || user.language || 'en',
+      invalidInputCount: sessionState.invalidInputCount || 0,
+      totalPredictions: sessionState.totalPredictions || 0,
+      correctPredictions: sessionState.correctPredictions || 0,
+      totalPoints: sessionState.totalPoints || user.total_points || 0,
+      referralCount: sessionState.referralCount || user.referral_count || 0,
+      ...sessionState
+    };
+  }
+
+  return sessionState;
+}
+
+function generateFallbackReferralCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
+async function syncUserSessionState(userId: string, sessionState: any): Promise<void> {
+  if (!sessionState) return;
+
+  const updates: any = {
+    conversation_state: JSON.stringify(sessionState)
+  };
+
+  if (sessionState.userName) updates.name = sessionState.userName;
+  if (sessionState.countryCode) updates.country_code = sessionState.countryCode;
+  if (sessionState.countryName) updates.country_name = sessionState.countryName;
+  if (sessionState.countryFlag) updates.country_flag_emoji = sessionState.countryFlag;
+  if (sessionState.referralCode) updates.referral_code = sessionState.referralCode;
+  if (sessionState.fanId) updates.fan_id = sessionState.fanId;
+
+  await updateUser(userId, updates);
+}
+
 function getErrorKeyboard(lastCommand: string): BotResponse {
   const retryData = `retry:${lastCommand.substring(0, 50)}`;
   return {
@@ -280,14 +322,14 @@ function getErrorKeyboard(lastCommand: string): BotResponse {
   };
 }
 
-function mapRemoteResponse(apiResponse: any): BotResponse {
+function mapRemoteResponse(apiResponse: any, command?: string): BotResponse {
   const messages = apiResponse.messages || [];
   let mappedMessages = messages.map((msg: any) => {
     if (msg.type === 'text') {
       if (msg.text.includes('*OhMyKick Menu*') && msg.text.includes('*predict*')) {
         return {
           kind: 'buttons',
-          text: `⚽ *OhMyKick Menu*\n\nHere's what you can do:`,
+          text: `⚽ What would you like to do next?`,
           buttons: [
             [{ id: 'predict', label: '🔮 Predict' }],
             [{ id: 'passport', label: '🪪 Passport' }, { id: 'stats', label: '📊 Stats' }],
@@ -339,19 +381,24 @@ function mapRemoteResponse(apiResponse: any): BotResponse {
   // Filter out any empty text messages to keep responses clean
   mappedMessages = mappedMessages.filter((msg: any) => msg.kind !== 'text' || msg.text !== '');
 
-  // Automatically append the Telegram navigation menu when conversationState is IDLE
+  // Automatically append the Telegram navigation menu when conversationState is IDLE or command is referral
   const sessionState = apiResponse.sessionState || {};
-  if (sessionState.conversationState === 'IDLE') {
+  const isReferral = command === 'referral' || command === 'referral_info' || mappedMessages.some((msg: any) => {
+    const txt = msg.text?.toLowerCase() || '';
+    return txt.includes('recruit') || txt.includes('referral');
+  });
+
+  if (sessionState.conversationState === 'IDLE' || isReferral) {
     // Check if the menu is already in the list
     const hasMenuAlready = mappedMessages.some((msg: any) =>
       msg.kind === 'buttons' &&
-      (msg.text?.includes('Menu') || (Array.isArray(msg.buttons) && msg.buttons.flat().some((b: any) => b.id === 'predict')))
+      (msg.text?.includes('What would you like to do next') || (Array.isArray(msg.buttons) && msg.buttons.flat().some((b: any) => b.id === 'predict')))
     );
 
     if (!hasMenuAlready) {
       mappedMessages.push({
         kind: 'buttons',
-        text: '⚽ *OhMyKick Menu*',
+        text: '⚽ What would you like to do next?',
         buttons: [
           [{ id: 'predict', label: '🔮 Predict' }],
           [{ id: 'passport', label: '🪪 Passport' }, { id: 'stats', label: '📊 Stats' }],
