@@ -81,8 +81,9 @@ export function registerTelegramHandler(app: FastifyInstance) {
         const isLeaderboard = ['rank', 'leaderboard', 'standings', 'country war'].some(k => cleanText.startsWith(k)) || cleanText === 'view_leaderboard';
         const isLeague = ['league', 'leagues', 'friend league'].some(k => cleanText.startsWith(k)) || cleanText === 'view_leagues';
         const isRecap = ['recap', 'personality', 'final recap', 'recap card'].some(k => cleanText.startsWith(k)) || cleanText === 'view_recap';
+        const isLocalState = ['LEAGUE_CREATE_NAME', 'LEAGUE_JOIN_CODE'].includes(user.conversation_state);
 
-        if (isLeaderboard || isLeague || isRecap) {
+        if (isLeaderboard || isLeague || isRecap || isLocalState) {
           let response = await processMessage(user, { type: 'text', text }, 'tg');
           response = appendLocalMenu(response);
           await sendTelegramResponse(ctx.chat.id, response);
@@ -124,7 +125,11 @@ export function registerTelegramHandler(app: FastifyInstance) {
         const sessionState = getUserSessionState(user);
 
         // Intercept local commands
-        const localCommands = ['leaderboard', 'view_leaderboard', 'rankings', 'league', 'view_leagues', 'recap', 'view_recap'];
+        const localCommands = [
+          'leaderboard', 'view_leaderboard', 'rankings',
+          'league', 'view_leagues', 'create_league', 'join_league',
+          'recap', 'view_recap'
+        ];
         if (localCommands.includes(data)) {
           let response = await processMessage(user, { type: 'button_reply', text: data }, 'tg');
           response = appendLocalMenu(response);
@@ -162,7 +167,7 @@ export function registerTelegramHandler(app: FastifyInstance) {
 
     const sessionState = getUserSessionState(user);
 
-    const isRemoteOnboardingPhoto = sessionState.conversationState === 'ONBOARDING_PHOTO';
+    const isRemoteOnboardingPhoto = ['ONBOARDING_PHOTO', 'UPDATE_PHOTO'].includes(sessionState.conversationState);
     const isLocalOnboardingPhoto = user.conversation_state === 'ONBOARDING_PHOTO';
 
     if (process.env.USE_OHMYKICK_API === 'true') {
@@ -194,13 +199,24 @@ export function registerTelegramHandler(app: FastifyInstance) {
 
       if (process.env.USE_OHMYKICK_API === 'true') {
         try {
-          const apiResponse = await callRemoteAPI(tgId, 'skip_photo', sessionState);
+          const transitionMsg = sessionState.conversationState === 'ONBOARDING_PHOTO' ? 'skip_photo' : 'cancel_photo';
+          const apiResponse = await callRemoteAPI(tgId, transitionMsg, sessionState);
           await syncUserSessionState(user.id, apiResponse.sessionState);
-          const mapped = mapRemoteResponse(apiResponse, 'skip_photo');
+          let mapped = mapRemoteResponse(apiResponse, transitionMsg);
+
+          if (sessionState.conversationState === 'UPDATE_PHOTO') {
+            mapped.messages = mapped.messages.map((m: any) => {
+              if (m.text?.includes('unchanged') || m.text?.includes('No change')) {
+                return { kind: 'text', text: '📸 Photo updated successfully!' };
+              }
+              return m;
+            });
+          }
           await sendTelegramResponse(ctx.chat.id, mapped);
         } catch (err: any) {
           console.error('[TG photo remote]', err.message);
-          await sendTelegramResponse(ctx.chat.id, getErrorKeyboard('skip_photo'));
+          const failedCmd = sessionState.conversationState === 'ONBOARDING_PHOTO' ? 'skip_photo' : 'cancel_photo';
+          await sendTelegramResponse(ctx.chat.id, getErrorKeyboard(failedCmd));
         }
       } else {
         const botResponse = await handleOnboardingPhotoUploaded(user, urlData.publicUrl);
@@ -300,6 +316,8 @@ async function syncUserSessionState(userId: string, sessionState: any): Promise<
   if (sessionState.countryFlag) updates.country_flag_emoji = sessionState.countryFlag;
   if (sessionState.referralCode) updates.referral_code = sessionState.referralCode;
   if (sessionState.fanId) updates.fan_id = sessionState.fanId;
+  if (sessionState.referralCount !== undefined) updates.referral_count = sessionState.referralCount;
+  if (sessionState.totalPoints !== undefined) updates.total_points = sessionState.totalPoints;
 
   await updateUser(userId, updates);
 }
