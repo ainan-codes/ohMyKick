@@ -210,7 +210,8 @@ export function registerTelegramHandler(app: FastifyInstance) {
 // ─── Remote API Helpers ─────────────────────────────────────
 
 async function callRemoteAPI(userId: string, message: string, sessionState: any = {}): Promise<any> {
-  const url = 'https://www.ohmykick.com/api/bot/message';
+  const baseUrl = process.env.BACKEND_API_URL || 'https://ohmykick.com';
+  const url = `${baseUrl}/api/bot/message`;
   const payload = {
     userId,
     channel: 'telegram',
@@ -295,7 +296,8 @@ function mapRemoteResponse(apiResponse: any): BotResponse {
     if (msg.type === 'image') {
       let imageUrl = msg.imageUrl;
       if (imageUrl.startsWith('/')) {
-        imageUrl = `https://www.ohmykick.com${imageUrl}`;
+        const domain = (process.env.APP_URL || 'https://ohmykick.com').replace('www.ohmykick.com', 'ohmykick.com').replace(/\/$/, '');
+        imageUrl = `${domain}${imageUrl}`;
       }
       return {
         kind: 'image',
