@@ -1,10 +1,11 @@
 import { bot } from '../telegram/sender.js';
-import { getUserByTgId, createUser, updateUser, updateConversationState } from '../db/users.js';
+import { getUserByTgId, createUser, updateUser, updateConversationState, getUserStats } from '../db/users.js';
 import { processMessage } from '../state-machine/index.js';
 import { handleOnboardingPhotoUploaded } from '../flows/onboarding.js';
 import { sendTgText, sendTgButtons, sendTgPhoto } from '../telegram/sender.js';
 import type { BotResponse, BotMessage } from '../flows/prediction.js';
 import type { FastifyInstance } from 'fastify';
+import { COUNTRIES } from '../utils/countries.js';
 
 export function registerTelegramHandler(app: FastifyInstance) {
   // Webhook route — Fastify forwards the body to Telegraf
@@ -92,7 +93,9 @@ export function registerTelegramHandler(app: FastifyInstance) {
 
         const apiResponse = await callRemoteAPI(tgId, text, sessionState);
         await syncUserSessionState(user.id, apiResponse.sessionState);
-        const mapped = mapRemoteResponse(apiResponse, text);
+        const freshUser = await getUserByTgId(tgId) || user;
+        const freshSession = getUserSessionState(freshUser);
+        const mapped = mapRemoteResponse(apiResponse, text, freshSession);
         await sendTelegramResponse(ctx.chat.id, mapped);
       } catch (err: any) {
         console.error('[TG text remote]', err.message);
@@ -160,7 +163,10 @@ export function registerTelegramHandler(app: FastifyInstance) {
 
         const apiResponse = await callRemoteAPI(tgId, data, sessionState);
         await syncUserSessionState(user.id, apiResponse.sessionState);
-        const mapped = mapRemoteResponse(apiResponse, data);
+        // Re-fetch user to get fresh photo_url after any updates
+        const freshUser = await getUserByTgId(tgId) || user;
+        const freshSession = getUserSessionState(freshUser);
+        const mapped = mapRemoteResponse(apiResponse, data, freshSession);
         if (ctx.chat) {
           await sendTelegramResponse(ctx.chat.id, mapped);
         }
@@ -243,7 +249,7 @@ export function registerTelegramHandler(app: FastifyInstance) {
               });
               const passportRes = await callRemoteAPI(tgId, 'passport', updatedSession);
               await syncUserSessionState(user.id, passportRes.sessionState);
-              const mappedPassport = mapRemoteResponse(passportRes, 'passport');
+              const mappedPassport = mapRemoteResponse(passportRes, 'passport', updatedSession);
               mapped.messages.push(...mappedPassport.messages);
             } catch (err: any) {
               console.error('[TG photo passport fetch]', err.message);
@@ -381,8 +387,38 @@ function getErrorKeyboard(lastCommand: string): BotResponse {
   };
 }
 
-function mapRemoteResponse(apiResponse: any, command?: string): BotResponse {
+export function buildPassportUrl(sessionState: any): string {
+  // Build the real Vercel poster API URL with photoUrl, bypassing the remote mock-poster
+  const posterServiceUrl = process.env.POSTER_SERVICE_URL || 'https://ohmykick.vercel.app';
+  const userCountry = sessionState.countryCode ? COUNTRIES[sessionState.countryCode] : null;
+  const params = new URLSearchParams({
+    name: sessionState.userName || 'FAN',
+    countryName: sessionState.countryName || '',
+    countryCode: sessionState.countryCode || '',
+    primaryColor: userCountry?.primaryColor ?? '#f0b429',
+    secondaryColor: userCountry?.secondaryColor ?? '#ffd166',
+    flagEmoji: sessionState.countryFlag || '',
+    fanId: sessionState.fanId || '',
+    fanLevel: sessionState.fanLevel || 'FAN',
+    totalPoints: String(sessionState.totalPoints || 0),
+    accuracyPct: '0',
+    streakCount: '0',
+    referralCount: String(sessionState.referralCount || 0),
+    referralCode: sessionState.referralCode || '',
+    variant: sessionState.passportVariant ? `V${sessionState.passportVariant}` : 'V3',
+  });
+  if (sessionState.photoUrl) {
+    params.set('photoUrl', sessionState.photoUrl);
+  }
+  return `${posterServiceUrl}/api/posters/passport?${params}`;
+}
+
+export function mapRemoteResponse(apiResponse: any, command?: string, userSessionState?: any): BotResponse {
   const messages = apiResponse.messages || [];
+  const sessionFromResponse = apiResponse.sessionState || {};
+  // Merge: prefer userSessionState (has fresh photo_url from DB) over session from response
+  const mergedSession = userSessionState ? { ...sessionFromResponse, ...userSessionState } : sessionFromResponse;
+
   let mappedMessages = messages.map((msg: any) => {
     if (msg.type === 'text') {
       if (msg.text.includes('*OhMyKick Menu*') && msg.text.includes('*predict*')) {
@@ -423,7 +459,14 @@ function mapRemoteResponse(apiResponse: any, command?: string): BotResponse {
     }
     if (msg.type === 'image') {
       let imageUrl = msg.imageUrl;
-      if (imageUrl.startsWith('/')) {
+      // ── FIX: Replace mock-poster passport URLs with real Vercel poster API URL ──
+      // The remote API returns /api/bot/mock-poster?type=passport&... which does NOT
+      // include the user's Supabase photo_url. We intercept it and build the real URL.
+      const isMockPassport = imageUrl && (imageUrl.includes('mock-poster') || imageUrl.includes('type=passport'));
+      if (isMockPassport && mergedSession.photoUrl) {
+        console.log('[mapRemoteResponse] Replacing mock-poster with real Vercel passport URL (photoUrl present)');
+        imageUrl = buildPassportUrl(mergedSession);
+      } else if (imageUrl && imageUrl.startsWith('/')) {
         const domain = (process.env.APP_URL || 'https://ohmykick.com').replace('www.ohmykick.com', 'ohmykick.com').replace(/\/$/, '');
         imageUrl = `${domain}${imageUrl}`;
       }
@@ -471,7 +514,7 @@ function mapRemoteResponse(apiResponse: any, command?: string): BotResponse {
     });
   }
 
-  if ((sessionState.conversationState === 'IDLE' && !isProfileScreen) || isReferral) {
+  if ((mergedSession.conversationState === 'IDLE' && !isProfileScreen) || isReferral) {
     // Check if the menu is already in the list
     const hasMenuAlready = mappedMessages.some((msg: any) =>
       msg.kind === 'buttons' &&

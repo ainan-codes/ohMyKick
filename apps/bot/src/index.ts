@@ -39,6 +39,35 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
+// Protected admin route for production match settlement
+app.post('/admin/settle-match', async (req, reply) => {
+  const adminSecret = process.env.ADMIN_SECRET;
+  if (!adminSecret) {
+    return reply.status(500).send({ error: 'ADMIN_SECRET env variable is not set' });
+  }
+
+  const authHeader = req.headers.authorization;
+  const xSecret = req.headers['x-admin-secret'];
+  const provided = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : xSecret;
+
+  if (provided !== adminSecret) {
+    return reply.status(401).send({ error: 'Unauthorized: invalid token or secret' });
+  }
+
+  const { matchId, homeScore, awayScore } = req.body as any;
+  if (!matchId) {
+    return reply.status(400).send({ error: 'matchId required' });
+  }
+
+  try {
+    const { mockMatchFinished } = await import('./pipeline/poll.js');
+    await mockMatchFinished(matchId, homeScore ?? 2, awayScore ?? 1);
+    return { ok: true, message: `Match ${matchId} settled manually: ${homeScore}-${awayScore}` };
+  } catch (err: any) {
+    return reply.status(500).send({ error: err.message });
+  }
+});
+
 // ─── Match polling scheduler ───────────────────────────────────
 // Every 2 minutes during tournament hours
 cron.schedule('*/2 * * * *', async () => {

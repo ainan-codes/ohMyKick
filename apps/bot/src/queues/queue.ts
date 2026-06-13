@@ -449,8 +449,25 @@ async function processNotifyJob(job: { data: any }) {
         [{ id: 'referral', label: '🔗 Referral' }, { id: 'profile', label: '👤 Profile' }]
       ]);
     } else if (type === 'result') {
-      await sendTgButtons(parseInt(user.tg_id), '🔥 Ready for the next fixture?', [
-        [{ id: 'predict', label: '🔮 Predict' }]
+      let nextMatchText = '🔥 Ready for the next fixture?';
+      try {
+        const nextMatch = await getNextMatch();
+        if (nextMatch) {
+          const matchDisplay = formatMatchForDisplay(nextMatch);
+          const kickoffTime = formatKickoffTime(nextMatch);
+          nextMatchText =
+            `🔥 *Ready for the next fixture?*\n\n` +
+            `⚽ *${matchDisplay}*\n` +
+            `Kickoff: ${kickoffTime}`;
+        }
+      } catch (err: any) {
+        console.error('[queue result follow-up getNextMatch]', err.message);
+      }
+      await sendTgButtons(parseInt(user.tg_id), nextMatchText, [
+        [
+          { id: 'predict', label: '🔮 Predict Next Match' },
+          { id: 'stats', label: '🏆 View Stats' }
+        ]
       ]);
     } else {
       await sendTgButtons(parseInt(user.tg_id), '⚽ What would you like to do next?', [
