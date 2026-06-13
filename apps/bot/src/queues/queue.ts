@@ -53,15 +53,14 @@ async function processPosterJob(job: { data: any }) {
   if (!user) throw new Error(`User ${userId} not found`);
 
   const stats = await getUserStats(userId);
-  const posterServiceUrl = process.env.POSTER_SERVICE_URL ?? 'https://ohmykick.vercel.app';
   const appUrl = process.env.APP_URL ?? 'https://ohmykick.com';
 
-  let posterApiUrl: string;
+  let params: URLSearchParams;
 
   if (type === 'passport') {
     const userCountry = user.country_code ? COUNTRIES[user.country_code] : null;
 
-    const params = new URLSearchParams({
+    params = new URLSearchParams({
       name: user.name,
       countryName: user.country_name,
       countryCode: user.country_code ?? '',
@@ -77,7 +76,6 @@ async function processPosterJob(job: { data: any }) {
       referralCode: user.referral_code,
       ...(user.photo_url ? { photoUrl: user.photo_url } : {}),
     });
-    posterApiUrl = `${posterServiceUrl}/api/posters/passport?${params}`;
   } else if (type === 'prematch' && matchId && predictionId) {
     const match = await getMatchById(matchId);
     const prediction = await getUserPredictionForMatch(userId, matchId);
@@ -86,7 +84,7 @@ async function processPosterJob(job: { data: any }) {
     const homeCountry = match.home_country_code ? COUNTRIES[match.home_country_code] : null;
     const awayCountry = match.away_country_code ? COUNTRIES[match.away_country_code] : null;
 
-    const params = new URLSearchParams({
+    params = new URLSearchParams({
       name: user.name,
       flagEmoji: user.country_flag_emoji,
       countryName: user.country_name,
@@ -108,13 +106,12 @@ async function processPosterJob(job: { data: any }) {
       homeCode: match.home_country_code ?? '',
       awayCode: match.away_country_code ?? '',
     });
-    posterApiUrl = `${posterServiceUrl}/api/posters/prematch?${params}`;
   } else if (type === 'result' && matchId && predictionId) {
     const match = await getMatchById(matchId);
     const prediction = await getUserPredictionForMatch(userId, matchId);
     if (!match || !prediction) throw new Error('Match or prediction not found');
 
-    const params = new URLSearchParams({
+    params = new URLSearchParams({
       name: user.name,
       countryName: user.country_name,
       flagEmoji: user.country_flag_emoji,
@@ -141,13 +138,12 @@ async function processPosterJob(job: { data: any }) {
                 : (match.away_score ?? 0) > (match.home_score ?? 0) ? (match.away_country_code ?? '')
                 : (match.home_country_code ?? ''),
     });
-    posterApiUrl = `${posterServiceUrl}/api/posters/result?${params}`;
   } else if (type === 'achievement') {
     const { achievementId } = job.data;
     const ach = ACHIEVEMENTS[achievementId];
     if (!ach) throw new Error(`Achievement ${achievementId} not found`);
 
-    const params = new URLSearchParams({
+    params = new URLSearchParams({
       name: user.name,
       countryName: user.country_name,
       flagEmoji: user.country_flag_emoji,
@@ -157,7 +153,6 @@ async function processPosterJob(job: { data: any }) {
       icon: ach.icon,
       referralCode: user.referral_code,
     });
-    posterApiUrl = `${posterServiceUrl}/api/posters/achievement?${params}`;
   } else if (type === 'recap') {
     const {
       personality,
@@ -170,7 +165,7 @@ async function processPosterJob(job: { data: any }) {
       referrals,
       rank,
     } = job.data;
-    const params = new URLSearchParams({
+    params = new URLSearchParams({
       name: user.name,
       countryName: user.country_name,
       flagEmoji: user.country_flag_emoji,
@@ -186,10 +181,12 @@ async function processPosterJob(job: { data: any }) {
       rank: String(rank ?? 1),
       referralCode: user.referral_code ?? '',
     });
-    posterApiUrl = `${posterServiceUrl}/api/posters/recap?${params}`;
   } else {
     throw new Error(`Unknown poster type: ${type}`);
   }
+
+  params.set('type', type);
+  const posterApiUrl = `${appUrl}/api/bot/poster?${params}`;
 
   // Download poster PNG
   console.log(`[Queue] Requesting poster API URL: ${posterApiUrl}`);

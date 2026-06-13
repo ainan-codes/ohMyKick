@@ -7,13 +7,12 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build:web",
+    "build": "npm run build:bot",
     "dev:bot": "npm run dev --workspace=apps/bot",
-    "dev:web": "npm run dev --workspace=apps/web",
     "build:bot": "npm run build --workspace=apps/bot",
-    "build:web": "npm run build --workspace=apps/web",
     "test:bot": "npm run test --workspace=apps/bot",
-    "seed-matches": "npm run seed-matches --workspace=apps/bot"
+    "seed-matches": "npm run seed-matches --workspace=apps/bot",
+    "run-probe": "node \"C:/Users/MY PC/.gemini/antigravity-ide/brain/053d3554-ab32-4bf2-bcbf-1a852b07f3f7/scratch/test_download_passport.js\""
   },
   "devDependencies": {
     "typescript": "^5.4.5"

@@ -568,31 +568,6 @@ function getErrorKeyboard(lastCommand: string): BotResponse {
   };
 }
 
-export function buildPassportUrl(sessionState: any): string {
-  // Build the real Vercel poster API URL with photoUrl, bypassing the remote mock-poster
-  const posterServiceUrl = process.env.POSTER_SERVICE_URL || 'https://ohmykick.vercel.app';
-  const userCountry = sessionState.countryCode ? COUNTRIES[sessionState.countryCode] : null;
-  const params = new URLSearchParams({
-    name: sessionState.userName || 'FAN',
-    countryName: sessionState.countryName || '',
-    countryCode: sessionState.countryCode || '',
-    primaryColor: userCountry?.primaryColor ?? '#f0b429',
-    secondaryColor: userCountry?.secondaryColor ?? '#ffd166',
-    flagEmoji: sessionState.countryFlag || '',
-    fanId: sessionState.fanId || '',
-    fanLevel: sessionState.fanLevel || 'FAN',
-    totalPoints: String(sessionState.totalPoints || 0),
-    accuracyPct: '0',
-    streakCount: '0',
-    referralCount: String(sessionState.referralCount || 0),
-    referralCode: sessionState.referralCode || '',
-    variant: sessionState.passportVariant ? `V${sessionState.passportVariant}` : 'V3',
-  });
-  if (sessionState.photoUrl) {
-    params.set('photoUrl', sessionState.photoUrl);
-  }
-  return `${posterServiceUrl}/api/posters/passport?${params}`;
-}
 
 export function mapRemoteResponse(apiResponse: any, command?: string, userSessionState?: any): BotResponse {
   const messages = apiResponse.messages || [];
@@ -646,14 +621,7 @@ export function mapRemoteResponse(apiResponse: any, command?: string, userSessio
         return { kind: 'ignored' as any };
       }
 
-      // ── FIX: Replace mock-poster passport URLs with real Vercel poster API URL ──
-      // The remote API returns /api/bot/mock-poster?type=passport&... which does NOT
-      // include the user's Supabase photo_url. We intercept it and build the real URL.
-      const isMockPassport = imageUrl && (imageUrl.includes('type=passport') || imageUrl.includes('mock-poster?type=passport'));
-      if (isMockPassport) {
-        console.log('[mapRemoteResponse] Replacing mock-poster with real Vercel passport URL');
-        imageUrl = buildPassportUrl(mergedSession);
-      } else if (imageUrl && imageUrl.startsWith('/')) {
+      if (imageUrl && imageUrl.startsWith('/')) {
         const domain = (process.env.APP_URL || 'https://ohmykick.com').replace('www.ohmykick.com', 'ohmykick.com').replace(/\/$/, '');
         imageUrl = `${domain}${imageUrl}`;
       }
