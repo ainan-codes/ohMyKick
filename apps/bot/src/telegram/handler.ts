@@ -453,6 +453,24 @@ function mapRemoteResponse(apiResponse: any, command?: string): BotResponse {
     msg.buttons.flat().some((b: any) => ['edit_name', 'change_country', 'change_language', 'change_photo'].includes(b.id))
   );
 
+  if (isProfileScreen) {
+    mappedMessages = mappedMessages.map((msg: any) => {
+      if (
+        msg.kind === 'buttons' &&
+        Array.isArray(msg.buttons) &&
+        msg.buttons.flat().some((b: any) => ['edit_name', 'change_country', 'change_language', 'change_photo'].includes(b.id))
+      ) {
+        const hasBackMenu = msg.buttons.flat().some((b: any) => b.id === 'menu');
+        if (!hasBackMenu) {
+          const newButtons = [...msg.buttons];
+          newButtons.push([{ id: 'menu', label: '↩ Back to Menu' }]);
+          return { ...msg, buttons: newButtons };
+        }
+      }
+      return msg;
+    });
+  }
+
   if ((sessionState.conversationState === 'IDLE' && !isProfileScreen) || isReferral) {
     // Check if the menu is already in the list
     const hasMenuAlready = mappedMessages.some((msg: any) =>
@@ -506,10 +524,37 @@ function appendLocalMenu(response: BotResponse): BotResponse {
   return response;
 }
 
+function cleanDuplicateMenus(messages: BotMessage[]): BotMessage[] {
+  const menuIndexes: number[] = [];
+  messages.forEach((msg, idx) => {
+    if (
+      msg.kind === 'buttons' &&
+      (msg.text?.includes('What would you like to do next') || msg.text?.includes('Menu')) &&
+      Array.isArray(msg.buttons) &&
+      msg.buttons.flat().some((b: any) => b.id === 'predict')
+    ) {
+      menuIndexes.push(idx);
+    }
+  });
+
+  if (menuIndexes.length <= 1) {
+    return messages;
+  }
+
+  const lastMenuIdx = menuIndexes[menuIndexes.length - 1];
+  return messages.filter((msg, idx) => {
+    if (menuIndexes.includes(idx) && idx !== lastMenuIdx) {
+      return false;
+    }
+    return true;
+  });
+}
+
 async function sendTelegramResponse(
   chatId: number | string,
   response: BotResponse
 ): Promise<void> {
+  response.messages = cleanDuplicateMenus(response.messages);
   for (const msg of response.messages) {
     await dispatchTelegramMessage(chatId, msg);
   }
