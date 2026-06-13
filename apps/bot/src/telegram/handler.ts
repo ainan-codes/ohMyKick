@@ -139,6 +139,25 @@ export function registerTelegramHandler(app: FastifyInstance) {
           return;
         }
 
+        // Intercept photo upload prompt to avoid infinite loop
+        if (data === 'send_new_photo') {
+          const response = {
+            messages: [
+              {
+                kind: 'buttons' as const,
+                text: '📸 *Send me a photo now.*\n\nUpload a picture from your gallery or use your camera.',
+                buttons: [
+                  [{ id: 'cancel_photo', label: '↩ Cancel' }]
+                ]
+              }
+            ]
+          };
+          if (ctx.chat) {
+            await sendTelegramResponse(ctx.chat.id, response);
+          }
+          return;
+        }
+
         const apiResponse = await callRemoteAPI(tgId, data, sessionState);
         await syncUserSessionState(user.id, apiResponse.sessionState);
         const mapped = mapRemoteResponse(apiResponse, data);
@@ -428,7 +447,13 @@ function mapRemoteResponse(apiResponse: any, command?: string): BotResponse {
     return txt.includes('recruit') || txt.includes('referral');
   });
 
-  if (sessionState.conversationState === 'IDLE' || isReferral) {
+  const isProfileScreen = mappedMessages.some((msg: any) =>
+    msg.kind === 'buttons' &&
+    Array.isArray(msg.buttons) &&
+    msg.buttons.flat().some((b: any) => ['edit_name', 'change_country', 'change_language', 'change_photo'].includes(b.id))
+  );
+
+  if ((sessionState.conversationState === 'IDLE' && !isProfileScreen) || isReferral) {
     // Check if the menu is already in the list
     const hasMenuAlready = mappedMessages.some((msg: any) =>
       msg.kind === 'buttons' &&
