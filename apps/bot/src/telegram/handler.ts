@@ -273,7 +273,7 @@ function getUserSessionState(user: any): any {
   if (!sessionState.userName || !sessionState.countryCode || !sessionState.referralCode) {
     sessionState = {
       conversationState: sessionState.conversationState || user.conversation_state || 'IDLE',
-      phoneNumber: sessionState.phoneNumber || (user.tg_id ? `tg-${user.tg_id}` : ''),
+      phoneNumber: sessionState.phoneNumber || '',
       userName: sessionState.userName || user.name || 'FOOTBALL FAN',
       countryCode: sessionState.countryCode || user.country_code || 'XX',
       countryName: sessionState.countryName || user.country_name || 'Unknown',
