@@ -39,6 +39,23 @@ export async function GET(request: NextRequest) {
 
   const theme = getTheme(countryCode);
 
+  let photoDataUrl: string | null = null;
+  if (photoUrl) {
+    try {
+      const imgRes = await fetch(photoUrl);
+      if (imgRes.ok) {
+        const arrayBuffer = await imgRes.arrayBuffer();
+        const base64 = Buffer.from(arrayBuffer).toString('base64');
+        const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+        photoDataUrl = `data:${contentType};base64,${base64}`;
+      } else {
+        console.error(`Failed to fetch photoUrl: ${photoUrl}, status: ${imgRes.status}`);
+      }
+    } catch (err) {
+      console.error(`Error fetching photoUrl: ${photoUrl}`, err);
+    }
+  }
+
   let badgeColor = theme.accent;
   if (fanLevel === 'LEGEND') badgeColor = '#a78bfa';
   else if (fanLevel === 'SUPPORTER') badgeColor = '#60a5fa';
@@ -75,8 +92,8 @@ export async function GET(request: NextRequest) {
 
         {/* PHOTO CIRCLE — glowing, variant-aware */}
         <div style={photoFrameStyle}>
-          {photoUrl ? (
-            <img src={photoUrl} width={260} height={260} style={{ objectFit: 'cover' }} />
+          {photoDataUrl ? (
+            <img src={photoDataUrl} width={260} height={260} style={{ objectFit: 'cover' }} />
           ) : (
             <div style={{
               fontSize: 100, fontWeight: 900, color: theme.textColor,

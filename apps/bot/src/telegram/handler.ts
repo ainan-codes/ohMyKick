@@ -92,6 +92,7 @@ export function registerTelegramHandler(app: FastifyInstance) {
         }
 
         const apiResponse = await callRemoteAPI(tgId, text, sessionState);
+        await saveRemotePrediction(user.id, apiResponse, sessionState);
         await syncUserSessionState(user.id, apiResponse.sessionState);
         const freshUser = await getUserByTgId(tgId) || user;
         const freshSession = getUserSessionState(freshUser);
@@ -162,6 +163,7 @@ export function registerTelegramHandler(app: FastifyInstance) {
         }
 
         const apiResponse = await callRemoteAPI(tgId, data, sessionState);
+        await saveRemotePrediction(user.id, apiResponse, sessionState);
         await syncUserSessionState(user.id, apiResponse.sessionState);
         // Re-fetch user to get fresh photo_url after any updates
         const freshUser = await getUserByTgId(tgId) || user;
@@ -278,6 +280,156 @@ export function registerTelegramHandler(app: FastifyInstance) {
 
 // ─── Remote API Helpers ─────────────────────────────────────
 
+async function saveRemotePrediction(userId: string, apiResponse: any, prevSession: any): Promise<void> {
+  const messages = apiResponse.messages || [];
+  const prematchMsg = messages.find((msg: any) =>
+    msg.type === 'image' && msg.imageUrl && (msg.imageUrl.includes('type=prematch') || msg.imageUrl.includes('prematch'))
+  );
+
+  if (!prematchMsg) return;
+
+  try {
+    const urlObj = new URL(prematchMsg.imageUrl, 'https://ohmykick.com');
+    const pred = urlObj.searchParams.get('pred');
+    const homeCode = urlObj.searchParams.get('homeCode');
+    const awayCode = urlObj.searchParams.get('awayCode');
+    const winner = urlObj.searchParams.get('winner');
+
+    if (!pred || !homeCode || !awayCode) return;
+
+    const [homeScoreStr, awayScoreStr] = pred.split('-');
+    const homeScore = parseInt(homeScoreStr, 10);
+    const awayScore = parseInt(awayScoreStr, 10);
+
+    let predictedWinner = 'DRAW';
+    if (winner === 'home') predictedWinner = 'HOME';
+    if (winner === 'away') predictedWinner = 'AWAY';
+
+    // 1. Determine api_match_id
+    let apiMatchId: number | null = null;
+    const matchIdStr = prevSession?.pendingMatchId || prevSession?.pending_match_id;
+    if (matchIdStr) {
+      const digits = matchIdStr.replace(/\D/g, '');
+      if (digits) {
+        apiMatchId = parseInt(digits, 10);
+      }
+    }
+
+    // 2. Look up match locally
+    const { supabase } = await import('../db/client.js');
+    let match: any = null;
+
+    if (apiMatchId) {
+      const { data } = await supabase
+        .from('matches')
+        .select('*')
+        .eq('api_match_id', apiMatchId)
+        .maybeSingle();
+      match = data;
+    }
+
+    if (!match) {
+      // Fallback: search by home and away country codes
+      const { data } = await supabase
+        .from('matches')
+        .select('*')
+        .eq('home_country_code', homeCode)
+        .eq('away_country_code', awayCode)
+        .maybeSingle();
+      match = data;
+    }
+
+    // 3. If match still not found, upsert a dynamic match row
+    if (!match) {
+      const homeCountry = COUNTRIES[homeCode];
+      const awayCountry = COUNTRIES[awayCode];
+      
+      const homeTeam = homeCountry?.name || homeCode;
+      const awayTeam = awayCountry?.name || awayCode;
+      const homeFlag = homeCountry?.flag || '';
+      const awayFlag = awayCountry?.flag || '';
+
+      const generatedApiId = apiMatchId || Math.floor(Math.random() * 10000) + 10000;
+      
+      const matchData = {
+        api_match_id: generatedApiId,
+        home_team: homeTeam,
+        away_team: awayTeam,
+        home_country_code: homeCode,
+        away_country_code: awayCode,
+        home_flag_emoji: homeFlag,
+        away_flag_emoji: awayFlag,
+        kickoff_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // fallback to tomorrow
+        stage: 'GROUP_STAGE',
+        status: 'SCHEDULED',
+        prediction_open: true,
+      };
+
+      const { data: insertedMatch, error: insertError } = await supabase
+        .from('matches')
+        .insert(matchData)
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('[saveRemotePrediction] Match insert error:', insertError.message);
+        return;
+      }
+      match = insertedMatch;
+    }
+
+    if (match) {
+      // 4. Upsert/create the prediction record
+      const { data: existingPred } = await supabase
+        .from('predictions')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('match_id', match.id)
+        .maybeSingle();
+
+      if (existingPred) {
+        // Update existing prediction
+        const { error: updateError } = await supabase
+          .from('predictions')
+          .update({
+            predicted_winner: predictedWinner,
+            predicted_home_score: homeScore,
+            predicted_away_score: awayScore,
+            is_locked: false,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingPred.id);
+
+        if (updateError) {
+          console.error('[saveRemotePrediction] Prediction update error:', updateError.message);
+        } else {
+          console.log(`[saveRemotePrediction] Updated local prediction for user=${userId}, match=${match.id}`);
+        }
+      } else {
+        // Create new prediction
+        const { error: createError } = await supabase
+          .from('predictions')
+          .insert({
+            user_id: userId,
+            match_id: match.id,
+            predicted_winner: predictedWinner,
+            predicted_home_score: homeScore,
+            predicted_away_score: awayScore,
+            is_locked: false,
+          });
+
+        if (createError) {
+          console.error('[saveRemotePrediction] Prediction create error:', createError.message);
+        } else {
+          console.log(`[saveRemotePrediction] Created local prediction for user=${userId}, match=${match.id}`);
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error('[saveRemotePrediction] Unexpected error:', err.message);
+  }
+}
+
 async function callRemoteAPI(userId: string, message: string, sessionState: any = {}): Promise<any> {
   const baseUrl = process.env.BACKEND_API_URL || 'https://ohmykick.com';
   const url = `${baseUrl}/api/bot/message`;
@@ -365,6 +517,34 @@ async function syncUserSessionState(userId: string, sessionState: any): Promise<
   if (sessionState.fanId) updates.fan_id = sessionState.fanId;
   if (sessionState.referralCount !== undefined) updates.referral_count = sessionState.referralCount;
   if (sessionState.totalPoints !== undefined) updates.total_points = sessionState.totalPoints;
+
+  // Sync pending match ID and winner to DB columns (mapping pendingMatchId string "G005" to UUID)
+  const { supabase } = await import('../db/client.js');
+  if (sessionState.pendingMatchId) {
+    const digits = sessionState.pendingMatchId.replace(/\D/g, '');
+    if (digits) {
+      const apiIdNum = parseInt(digits, 10);
+      const { data: match } = await supabase
+        .from('matches')
+        .select('id')
+        .eq('api_match_id', apiIdNum)
+        .maybeSingle();
+      if (match) {
+        updates.pending_match_id = match.id;
+      }
+    }
+  } else if (sessionState.pendingMatchId === null) {
+    updates.pending_match_id = null;
+  }
+
+  if (sessionState.pendingWinner) {
+    let winnerVal = sessionState.pendingWinner;
+    if (winnerVal === 'TEAM1') winnerVal = 'HOME';
+    if (winnerVal === 'TEAM2') winnerVal = 'AWAY';
+    updates.pending_winner = winnerVal;
+  } else if (sessionState.pendingWinner === null) {
+    updates.pending_winner = null;
+  }
 
   await updateUser(userId, updates);
 }
@@ -462,7 +642,7 @@ export function mapRemoteResponse(apiResponse: any, command?: string, userSessio
       // ── FIX: Replace mock-poster passport URLs with real Vercel poster API URL ──
       // The remote API returns /api/bot/mock-poster?type=passport&... which does NOT
       // include the user's Supabase photo_url. We intercept it and build the real URL.
-      const isMockPassport = imageUrl && (imageUrl.includes('mock-poster') || imageUrl.includes('type=passport'));
+      const isMockPassport = imageUrl && (imageUrl.includes('type=passport') || imageUrl.includes('mock-poster?type=passport'));
       if (isMockPassport && mergedSession.photoUrl) {
         console.log('[mapRemoteResponse] Replacing mock-poster with real Vercel passport URL (photoUrl present)');
         imageUrl = buildPassportUrl(mergedSession);
