@@ -196,21 +196,39 @@ export function registerTelegramHandler(app: FastifyInstance) {
       const { data: urlData } = supabase.storage.from('photos').getPublicUrl(path);
 
       await updateUser(user.id, { photo_url: urlData.publicUrl });
+      sessionState.photoUrl = urlData.publicUrl;
+      sessionState.dbId = user.id;
 
       if (process.env.USE_OHMYKICK_API === 'true') {
         try {
-          const transitionMsg = sessionState.conversationState === 'ONBOARDING_PHOTO' ? 'skip_photo' : 'cancel_photo';
+          const isUpdatePhoto = sessionState.conversationState === 'UPDATE_PHOTO';
+          const transitionMsg = isUpdatePhoto ? 'cancel_photo' : 'skip_photo';
           const apiResponse = await callRemoteAPI(tgId, transitionMsg, sessionState);
           await syncUserSessionState(user.id, apiResponse.sessionState);
           let mapped = mapRemoteResponse(apiResponse, transitionMsg);
 
-          if (sessionState.conversationState === 'UPDATE_PHOTO') {
+          if (isUpdatePhoto) {
             mapped.messages = mapped.messages.map((m: any) => {
               if (m.text?.includes('unchanged') || m.text?.includes('No change')) {
                 return { kind: 'text', text: '📸 Photo updated successfully!' };
               }
               return m;
             });
+
+            // Automatically request and append the updated passport image
+            try {
+              const updatedSession = getUserSessionState({
+                ...user,
+                photo_url: urlData.publicUrl,
+                conversation_state: JSON.stringify(apiResponse.sessionState)
+              });
+              const passportRes = await callRemoteAPI(tgId, 'passport', updatedSession);
+              await syncUserSessionState(user.id, passportRes.sessionState);
+              const mappedPassport = mapRemoteResponse(passportRes, 'passport');
+              mapped.messages.push(...mappedPassport.messages);
+            } catch (err: any) {
+              console.error('[TG photo passport fetch]', err.message);
+            }
           }
           await sendTelegramResponse(ctx.chat.id, mapped);
         } catch (err: any) {
@@ -290,6 +308,10 @@ function getUserSessionState(user: any): any {
       ...sessionState
     };
   }
+
+  // Always ensure dbId and photoUrl are populated in sessionState
+  sessionState.dbId = sessionState.dbId || user.id;
+  sessionState.photoUrl = sessionState.photoUrl || user.photo_url || '';
 
   return sessionState;
 }
