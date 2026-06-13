@@ -30,8 +30,6 @@ services:
           type: redis
           name: ohmykick-redis
           property: connectionString
-      - key: POSTER_SERVICE_URL
-        sync: false
       - key: APP_URL
         sync: false
       - key: TG_BOT_USERNAME
