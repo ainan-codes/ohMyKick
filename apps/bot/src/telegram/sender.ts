@@ -21,23 +21,52 @@ export async function sendTgText(chatId: number | string, text: string): Promise
   }
 }
 
+function normalizeButtons(buttons: any, columns = 3): { id: string; label: string }[][] {
+  if (!buttons || !Array.isArray(buttons)) return [];
+
+  const rows: { id: string; label: string }[][] = [];
+  let currentChunk: { id: string; label: string }[] = [];
+
+  for (const item of buttons) {
+    if (Array.isArray(item)) {
+      if (currentChunk.length > 0) {
+        rows.push(currentChunk);
+        currentChunk = [];
+      }
+      const filteredRow = item
+        .filter((b: any) => b && typeof b === 'object' && b.id && (b.label || b.title))
+        .map((b: any) => ({ id: b.id, label: String(b.label || b.title) }));
+      if (filteredRow.length > 0) {
+        rows.push(filteredRow);
+      }
+    } else if (item && typeof item === 'object') {
+      const id = item.id;
+      const label = item.label || item.title;
+      if (id && label) {
+        currentChunk.push({ id, label: String(label) });
+        if (currentChunk.length === columns) {
+          rows.push(currentChunk);
+          currentChunk = [];
+        }
+      }
+    }
+  }
+
+  if (currentChunk.length > 0) {
+    rows.push(currentChunk);
+  }
+
+  return rows;
+}
+
 export async function sendTgButtons(
   chatId: number | string,
   text: string,
-  buttons: { id: string; label: string }[] | { id: string; label: string }[][],
+  buttons: any,
   columns = 3
 ): Promise<void> {
   try {
-    let rows: { id: string; label: string }[][] = [];
-    if (buttons.length > 0 && Array.isArray(buttons[0])) {
-      rows = buttons as { id: string; label: string }[][];
-    } else {
-      const flatButtons = buttons as { id: string; label: string }[];
-      for (let i = 0; i < flatButtons.length; i += columns) {
-        rows.push(flatButtons.slice(i, i + columns));
-      }
-    }
-
+    const rows = normalizeButtons(buttons, columns);
     const keyboard = Markup.inlineKeyboard(
       rows.map((row) =>
         row.map((b) => Markup.button.callback(b.label, b.id))
@@ -57,7 +86,7 @@ export async function sendTgPhoto(
   chatId: number | string,
   photoUrlOrBuffer: string | Buffer,
   caption?: string,
-  buttons?: { id: string; label: string }[][]
+  buttons?: any
 ): Promise<void> {
   try {
     const photo =
@@ -65,9 +94,10 @@ export async function sendTgPhoto(
         ? { url: photoUrlOrBuffer }
         : { source: photoUrlOrBuffer, filename: 'poster.png' };
 
-    const replyMarkup = buttons
+    const rows = buttons ? normalizeButtons(buttons, 3) : [];
+    const replyMarkup = rows.length > 0
       ? Markup.inlineKeyboard(
-          buttons.map((row) => row.map((b) => Markup.button.callback(b.label, b.id)))
+          rows.map((row) => row.map((b) => Markup.button.callback(b.label, b.id)))
         ).reply_markup
       : undefined;
 
