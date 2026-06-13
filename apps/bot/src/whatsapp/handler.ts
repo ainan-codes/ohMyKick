@@ -65,7 +65,7 @@ async function handleWhatsAppWebhook(body: any): Promise<void> {
   if (msg.hasImage && msg.imageId && user.conversation_state === 'ONBOARDING_PHOTO') {
     const photoBuffer = await downloadWhatsAppMedia(msg.imageId);
     if (photoBuffer) {
-      const path = `photos/${user.id}.jpg`;
+      const path = `photos/${msg.waId}.jpg`;
       await supabase.storage.from('photos').upload(path, photoBuffer, {
         contentType: 'image/jpeg',
         upsert: true,

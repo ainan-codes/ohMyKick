@@ -7,7 +7,7 @@ const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 
 export const bot = new Telegraf(TG_TOKEN);
 
-function escapeMarkdown(text: string): string {
+export function escapeMarkdown(text: string): string {
   if (!text) return text;
   // Escape underscores that are part of words (e.g. GB_SCT -> GB\_SCT) to prevent Markdown parser failures
   return text.replace(/([a-zA-Z0-9])_([a-zA-Z0-9])/g, '$1\\_$2');
@@ -21,7 +21,7 @@ export async function sendTgText(chatId: number | string, text: string): Promise
   }
 }
 
-function normalizeButtons(buttons: any, columns = 3): { id: string; label: string }[][] {
+export function normalizeButtons(buttons: any, columns = 3): { id: string; label: string }[][] {
   if (!buttons || !Array.isArray(buttons)) return [];
 
   const rows: { id: string; label: string }[][] = [];

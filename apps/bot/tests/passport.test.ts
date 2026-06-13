@@ -53,7 +53,7 @@ describe('Passport photo URL transformation', () => {
     expect(imgMsg?.url).toContain('photoUrl=https%3A%2F%2Fsupabase.co%2Fphoto.jpg');
   });
 
-  it('keeps mock-poster passport URL unmodified (prepended with domain) if photoUrl is missing', () => {
+  it('replaces mock-poster passport URL with Vercel URL even if photoUrl is missing', () => {
     const apiResponse = {
       sessionState: {
         conversationState: 'IDLE',
@@ -69,7 +69,7 @@ describe('Passport photo URL transformation', () => {
     const result = mapRemoteResponse(apiResponse, 'passport', {});
     const imgMsg = result.messages.find((m) => m.kind === 'image');
     expect(imgMsg).toBeDefined();
-    expect(imgMsg?.url).toContain('/api/bot/mock-poster');
+    expect(imgMsg?.url).toContain('https://ohmykick.vercel.app/api/posters/passport');
     expect(imgMsg?.url).not.toContain('photoUrl');
   });
 });

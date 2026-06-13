@@ -2,7 +2,8 @@ import { bot } from '../telegram/sender.js';
 import { getUserByTgId, createUser, updateUser, updateConversationState, getUserStats } from '../db/users.js';
 import { processMessage } from '../state-machine/index.js';
 import { handleOnboardingPhotoUploaded } from '../flows/onboarding.js';
-import { sendTgText, sendTgButtons, sendTgPhoto } from '../telegram/sender.js';
+import { sendTgText, sendTgButtons, sendTgPhoto, escapeMarkdown, normalizeButtons } from '../telegram/sender.js';
+import { Markup } from 'telegraf';
 import type { BotResponse, BotMessage } from '../flows/prediction.js';
 import type { FastifyInstance } from 'fastify';
 import { COUNTRIES } from '../utils/countries.js';
@@ -138,7 +139,7 @@ export function registerTelegramHandler(app: FastifyInstance) {
           let response = await processMessage(user, { type: 'button_reply', text: data }, 'tg');
           response = appendLocalMenu(response);
           if (ctx.chat) {
-            await sendTelegramResponse(ctx.chat.id, response);
+            await sendTelegramResponse(ctx.chat.id, response, ctx);
           }
           return;
         }
@@ -157,7 +158,7 @@ export function registerTelegramHandler(app: FastifyInstance) {
             ]
           };
           if (ctx.chat) {
-            await sendTelegramResponse(ctx.chat.id, response);
+            await sendTelegramResponse(ctx.chat.id, response, ctx);
           }
           return;
         }
@@ -170,18 +171,18 @@ export function registerTelegramHandler(app: FastifyInstance) {
         const freshSession = getUserSessionState(freshUser);
         const mapped = mapRemoteResponse(apiResponse, data, freshSession);
         if (ctx.chat) {
-          await sendTelegramResponse(ctx.chat.id, mapped);
+          await sendTelegramResponse(ctx.chat.id, mapped, ctx);
         }
       } catch (err: any) {
         console.error('[TG callback remote]', err.message);
         if (ctx.chat) {
-          await sendTelegramResponse(ctx.chat.id, getErrorKeyboard(data));
+          await sendTelegramResponse(ctx.chat.id, getErrorKeyboard(data), ctx);
         }
       }
     } else {
       const response = await processMessage(user, { type: 'button_reply', text: data }, 'tg');
       if (ctx.chat) {
-        await sendTelegramResponse(ctx.chat.id, response);
+        await sendTelegramResponse(ctx.chat.id, response, ctx);
       }
     }
   });
@@ -215,7 +216,7 @@ export function registerTelegramHandler(app: FastifyInstance) {
       const buffer = Buffer.from(await response.arrayBuffer());
 
       const { supabase } = await import('../db/client.js');
-      const path = `photos/${user.id}.jpg`;
+      const path = `photos/${tgId}.jpg`;
       await supabase.storage.from('photos').upload(path, buffer, {
         contentType: 'image/jpeg',
         upsert: true,
@@ -639,12 +640,18 @@ export function mapRemoteResponse(apiResponse: any, command?: string, userSessio
     }
     if (msg.type === 'image') {
       let imageUrl = msg.imageUrl;
+      // Filter out echoed profile photo (Bug 3)
+      const isProfilePhoto = imageUrl && (imageUrl.includes('/photos/') || imageUrl.includes('/storage/v1/object/public/photos/'));
+      if (isProfilePhoto) {
+        return { kind: 'ignored' as any };
+      }
+
       // ── FIX: Replace mock-poster passport URLs with real Vercel poster API URL ──
       // The remote API returns /api/bot/mock-poster?type=passport&... which does NOT
       // include the user's Supabase photo_url. We intercept it and build the real URL.
       const isMockPassport = imageUrl && (imageUrl.includes('type=passport') || imageUrl.includes('mock-poster?type=passport'));
-      if (isMockPassport && mergedSession.photoUrl) {
-        console.log('[mapRemoteResponse] Replacing mock-poster with real Vercel passport URL (photoUrl present)');
+      if (isMockPassport) {
+        console.log('[mapRemoteResponse] Replacing mock-poster with real Vercel passport URL');
         imageUrl = buildPassportUrl(mergedSession);
       } else if (imageUrl && imageUrl.startsWith('/')) {
         const domain = (process.env.APP_URL || 'https://ohmykick.com').replace('www.ohmykick.com', 'ohmykick.com').replace(/\/$/, '');
@@ -660,8 +667,8 @@ export function mapRemoteResponse(apiResponse: any, command?: string, userSessio
     return { kind: 'text', text: '' };
   });
 
-  // Filter out any empty text messages to keep responses clean
-  mappedMessages = mappedMessages.filter((msg: any) => msg.kind !== 'text' || msg.text !== '');
+  // Filter out ignored and empty text messages to keep responses clean
+  mappedMessages = mappedMessages.filter((msg: any) => msg.kind !== 'ignored' && (msg.kind !== 'text' || msg.text !== ''));
 
   // Automatically append the Telegram navigation menu when conversationState is IDLE or command is referral
   const sessionState = apiResponse.sessionState || {};
@@ -775,11 +782,44 @@ function cleanDuplicateMenus(messages: BotMessage[]): BotMessage[] {
 
 async function sendTelegramResponse(
   chatId: number | string,
-  response: BotResponse
+  response: BotResponse,
+  ctx?: any
 ): Promise<void> {
   response.messages = cleanDuplicateMenus(response.messages);
-  for (const msg of response.messages) {
-    await dispatchTelegramMessage(chatId, msg);
+  
+  let isEdited = false;
+  if (ctx && ctx.callbackQuery && response.messages.length > 0) {
+    const firstMsg = response.messages[0];
+    if (firstMsg.kind === 'buttons' || firstMsg.kind === 'text' || firstMsg.kind === 'list') {
+      try {
+        const text = firstMsg.text;
+        let rows: { id: string; label: string }[][] = [];
+        if (firstMsg.kind === 'buttons') {
+          rows = normalizeButtons(firstMsg.buttons, 3);
+        } else if (firstMsg.kind === 'list') {
+          const allRows = firstMsg.sections.flatMap((s: any) =>
+            s.rows.map((r: any) => ({ id: r.id, label: r.title }))
+          );
+          rows = normalizeButtons(allRows, 1);
+        }
+        const replyMarkup = rows.length > 0
+          ? Markup.inlineKeyboard(rows.map((row) => row.map((b) => Markup.button.callback(b.label, b.id)))).reply_markup
+          : undefined;
+
+        await ctx.editMessageText(escapeMarkdown(text), {
+          parse_mode: 'Markdown',
+          reply_markup: replyMarkup,
+        });
+        isEdited = true;
+      } catch (err: any) {
+        console.warn('[TG editMessageText failed, falling back to send]:', err.message);
+      }
+    }
+  }
+
+  const startIdx = isEdited ? 1 : 0;
+  for (let i = startIdx; i < response.messages.length; i++) {
+    await dispatchTelegramMessage(chatId, response.messages[i]);
   }
 }
 
