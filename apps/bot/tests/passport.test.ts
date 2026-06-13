@@ -72,4 +72,30 @@ describe('Passport photo URL transformation', () => {
     expect(imgMsg?.url).toContain('https://ohmykick.vercel.app/api/posters/passport');
     expect(imgMsg?.url).not.toContain('photoUrl');
   });
+
+  it('filters out echoed profile photos in mapRemoteResponse', () => {
+    const apiResponse = {
+      sessionState: {
+        conversationState: 'IDLE',
+      },
+      messages: [
+        {
+          type: 'image',
+          imageUrl: 'https://ybkryfliqgfqgjwgniew.supabase.co/storage/v1/object/public/photos/photos/7728573771.jpg',
+        },
+        {
+          type: 'buttons',
+          text: '👤 Your Profile',
+          buttons: []
+        }
+      ],
+    };
+
+    const result = mapRemoteResponse(apiResponse, 'profile', {});
+    const imgMsg = result.messages.find((m) => m.kind === 'image');
+    expect(imgMsg).toBeUndefined(); // Ignored photo should be filtered out
+    const buttonsMsg = result.messages.find((m) => m.kind === 'buttons');
+    expect(buttonsMsg).toBeDefined();
+    expect(buttonsMsg?.text).toBe('👤 Your Profile');
+  });
 });
