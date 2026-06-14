@@ -46,7 +46,9 @@ export function registerTelegramHandler(app: FastifyInstance) {
       try {
         const apiResponse = await callRemoteAPI(tgId, 'start', {});
         await syncUserSessionState(user.id, apiResponse.sessionState);
-        const mapped = mapRemoteResponse(apiResponse, 'start');
+        const freshUserForStart = await getUserByTgId(tgId) || user;
+        const freshSessionForStart = getUserSessionState(freshUserForStart);
+        const mapped = mapRemoteResponse(apiResponse, 'start', freshSessionForStart);
         await sendTelegramResponse(ctx.chat.id, mapped);
       } catch (err: any) {
         console.error('[TG start remote]', err.message);
@@ -236,7 +238,9 @@ export function registerTelegramHandler(app: FastifyInstance) {
           const transitionMsg = isUpdatePhoto ? 'cancel_photo' : 'skip_photo';
           const apiResponse = await callRemoteAPI(tgId, transitionMsg, sessionState);
           await syncUserSessionState(user.id, apiResponse.sessionState);
-          let mapped = mapRemoteResponse(apiResponse, transitionMsg);
+          const freshUserForPhoto = await getUserByTgId(tgId) || user;
+          const freshSessionForPhoto = getUserSessionState(freshUserForPhoto);
+          let mapped = mapRemoteResponse(apiResponse, transitionMsg, freshSessionForPhoto);
 
           // Always show a success message when photo is updated
           mapped.messages = mapped.messages.map((m: any) => {
@@ -580,7 +584,18 @@ export function mapRemoteResponse(apiResponse: any, command?: string, userSessio
   // userSessionState provides fallbacks for fields the API doesn't return.
   // This prevents stale photoUrl values in the local session from overriding
   // the fresh value the API has just read from the database.
-  const mergedSession = userSessionState ? { ...userSessionState, ...sessionFromResponse } : sessionFromResponse;
+  // CRITICAL: photoUrl must come from the local DB session, NOT from the API response.
+  // ohmykick.com's API does not reliably return photoUrl in sessionState.
+  // If we let sessionFromResponse overwrite it, the photo is lost and the passport
+  // shows a placeholder instead of the user's uploaded photo.
+  const mergedSession = userSessionState
+    ? {
+        ...userSessionState,
+        ...sessionFromResponse,
+        // Always preserve the DB-sourced photoUrl — never let API override it
+        photoUrl: userSessionState.photoUrl || sessionFromResponse.photoUrl || '',
+      }
+    : sessionFromResponse;
 
   let mappedMessages = messages.map((msg: any) => {
     if (msg.type === 'text') {
@@ -628,15 +643,17 @@ export function mapRemoteResponse(apiResponse: any, command?: string, userSessio
         return { kind: 'ignored' as any };
       }
 
+      // Normalize relative URLs to absolute (ohmykick.com may return either)
       if (imageUrl && imageUrl.startsWith('/')) {
         const domain = (process.env.APP_URL || 'https://ohmykick.com').replace('www.ohmykick.com', 'ohmykick.com').replace(/\/$/, '');
         imageUrl = `${domain}${imageUrl}`;
-        // CRITICAL: The API returns /api/bot/mock-poster URLs which render placeholder avatars.
-        // The real renderer is /api/bot/poster — it reads photo_url from Supabase via fanDbId.
-        // Replace mock-poster with poster so the Telegram bot uses the correct renderer.
+      }
+
+      // For any ohmykick.com poster URL (relative OR absolute), apply fixes:
+      // 1. Replace mock-poster with poster (real renderer)
+      // 2. Inject photoUrl so sender.ts can composite the user's photo locally
+      if (imageUrl && imageUrl.includes('ohmykick.com')) {
         imageUrl = imageUrl.replace('/api/bot/mock-poster', '/api/bot/poster');
-        // Also inject photoUrl as a query param so the renderer can use it directly
-        // (belt-and-suspenders: fanDbId is already in the URL for the DB lookup path).
         if (mergedSession?.photoUrl && !imageUrl.includes('photoUrl=')) {
           const sep = imageUrl.includes('?') ? '&' : '?';
           imageUrl = `${imageUrl}${sep}photoUrl=${encodeURIComponent(mergedSession.photoUrl)}`;
