@@ -631,6 +631,16 @@ export function mapRemoteResponse(apiResponse: any, command?: string, userSessio
       if (imageUrl && imageUrl.startsWith('/')) {
         const domain = (process.env.APP_URL || 'https://ohmykick.com').replace('www.ohmykick.com', 'ohmykick.com').replace(/\/$/, '');
         imageUrl = `${domain}${imageUrl}`;
+        // CRITICAL: The API returns /api/bot/mock-poster URLs which render placeholder avatars.
+        // The real renderer is /api/bot/poster — it reads photo_url from Supabase via fanDbId.
+        // Replace mock-poster with poster so the Telegram bot uses the correct renderer.
+        imageUrl = imageUrl.replace('/api/bot/mock-poster', '/api/bot/poster');
+        // Also inject photoUrl as a query param so the renderer can use it directly
+        // (belt-and-suspenders: fanDbId is already in the URL for the DB lookup path).
+        if (mergedSession?.photoUrl && !imageUrl.includes('photoUrl=')) {
+          const sep = imageUrl.includes('?') ? '&' : '?';
+          imageUrl = `${imageUrl}${sep}photoUrl=${encodeURIComponent(mergedSession.photoUrl)}`;
+        }
       }
       return {
         kind: 'image',
