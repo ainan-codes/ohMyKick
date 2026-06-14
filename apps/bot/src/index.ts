@@ -8,6 +8,9 @@ dotenv.config();
 import { registerTelegramHandler } from './telegram/handler.js';
 import { registerWhatsAppHandler } from './whatsapp/handler.js';
 import { pollActiveMatches } from './pipeline/poll.js';
+import { getUpcomingMatches } from './db/matches.js';
+import { supabase } from './db/client.js';
+import { sendTgButtons } from './telegram/sender.js';
 
 // Import queues to start workers
 import './queues/queue.js';
@@ -75,6 +78,80 @@ cron.schedule('*/2 * * * *', async () => {
     await pollActiveMatches();
   } catch (err: any) {
     console.error('[Cron pollMatches]', err.message);
+  }
+});
+
+// ─── Pre-match nudge: 30 minutes before kickoff ─────────────────
+// Runs every minute; finds matches kicking off in 25–35 min window
+// Sends a prediction nudge to every TG user who hasn't predicted yet
+cron.schedule('* * * * *', async () => {
+  try {
+    const now = Date.now();
+    const windowStart = new Date(now + 25 * 60 * 1000).toISOString();
+    const windowEnd   = new Date(now + 35 * 60 * 1000).toISOString();
+
+    // Find SCHEDULED matches kicking off within the 25–35 min window
+    const { data: upcomingMatches } = await supabase
+      .from('matches')
+      .select('*')
+      .eq('status', 'SCHEDULED')
+      .eq('prediction_open', true)
+      .gte('kickoff_at', windowStart)
+      .lte('kickoff_at', windowEnd);
+
+    if (!upcomingMatches || upcomingMatches.length === 0) return;
+
+    for (const match of upcomingMatches) {
+      // Find TG users who have NOT predicted this match
+      const { data: predictedUserIds } = await supabase
+        .from('predictions')
+        .select('user_id')
+        .eq('match_id', match.id);
+
+      const predictedSet = new Set((predictedUserIds ?? []).map((p: any) => p.user_id));
+
+      // Get all TG users
+      const { data: tgUsers } = await supabase
+        .from('users')
+        .select('id, tg_id, name')
+        .not('tg_id', 'is', null);
+
+      if (!tgUsers) continue;
+
+      const kickoffTime = new Date(match.kickoff_at).toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Kolkata',
+      }) + ' IST';
+
+      const homeFlag = match.home_flag_emoji ?? '';
+      const awayFlag = match.away_flag_emoji ?? '';
+      const matchDisplay = `${homeFlag} ${match.home_team} vs ${match.away_team} ${awayFlag}`;
+
+      const nudgeText =
+        `⚽ *Match starting in 30 mins!*\n\n` +
+        `*${matchDisplay}*\n` +
+        `Kickoff: ${kickoffTime}\n\n` +
+        `You haven't predicted yet — tap below before it's too late!`;
+
+      for (const user of tgUsers) {
+        if (predictedSet.has(user.id)) continue; // already predicted
+        if (!user.tg_id) continue;
+
+        try {
+          await sendTgButtons(
+            parseInt(user.tg_id),
+            nudgeText,
+            [[{ id: 'predict', label: '🔮 Predict Now' }]]
+          );
+          console.log(`[PreMatchNudge] Sent to tg_id=${user.tg_id} for match ${match.id}`);
+        } catch (err: any) {
+          console.error(`[PreMatchNudge] Failed for tg_id=${user.tg_id}:`, err.message);
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error('[Cron preMatchNudge]', err.message);
   }
 });
 

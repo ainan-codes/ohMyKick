@@ -352,14 +352,14 @@ async function saveRemotePrediction(userId: string, apiResponse: any, prevSessio
     if (!match) {
       const homeCountry = COUNTRIES[homeCode];
       const awayCountry = COUNTRIES[awayCode];
-      
+
       const homeTeam = homeCountry?.name || homeCode;
       const awayTeam = awayCountry?.name || awayCode;
       const homeFlag = homeCountry?.flag || '';
       const awayFlag = awayCountry?.flag || '';
 
       const generatedApiId = apiMatchId || Math.floor(Math.random() * 10000) + 10000;
-      
+
       const matchData = {
         api_match_id: generatedApiId,
         home_team: homeTeam,
@@ -526,6 +526,9 @@ async function syncUserSessionState(userId: string, sessionState: any): Promise<
   if (sessionState.fanId) updates.fan_id = sessionState.fanId;
   if (sessionState.referralCount !== undefined) updates.referral_count = sessionState.referralCount;
   if (sessionState.totalPoints !== undefined) updates.total_points = sessionState.totalPoints;
+  // NOTE: sessionState.phoneNumber is NEVER written to any DB column here.
+  // For Telegram users, phoneNumber is an internal API session field only.
+  // tg_id is set at user creation and never modified here.
 
   // Sync pending match ID and winner to DB columns (mapping pendingMatchId string "G005" to UUID)
   const { supabase } = await import('../db/client.js');
@@ -582,8 +585,6 @@ export function mapRemoteResponse(apiResponse: any, command?: string, userSessio
   const sessionFromResponse = apiResponse.sessionState || {};
   // Merge: API response sessionState is authoritative (wins on conflict).
   // userSessionState provides fallbacks for fields the API doesn't return.
-  // This prevents stale photoUrl values in the local session from overriding
-  // the fresh value the API has just read from the database.
   // CRITICAL: photoUrl must come from the local DB session, NOT from the API response.
   // ohmykick.com's API does not reliably return photoUrl in sessionState.
   // If we let sessionFromResponse overwrite it, the photo is lost and the passport
@@ -645,19 +646,17 @@ export function mapRemoteResponse(apiResponse: any, command?: string, userSessio
 
       // Normalize relative URLs to absolute (ohmykick.com may return either)
       if (imageUrl && imageUrl.startsWith('/')) {
-        const domain = (process.env.APP_URL || 'https://ohmykick.com').replace('www.ohmykick.com', 'ohmykick.com').replace(/\/$/, '');
+        const domain = 'https://www.ohmykick.com';
         imageUrl = `${domain}${imageUrl}`;
       }
 
-      // For any ohmykick.com poster URL (relative OR absolute), apply fixes:
-      // 1. Replace mock-poster with poster (real renderer)
-      // 2. Inject photoUrl so sender.ts can composite the user's photo locally
-      if (imageUrl && imageUrl.includes('ohmykick.com')) {
-        imageUrl = imageUrl.replace('/api/bot/mock-poster', '/api/bot/poster');
-        if (mergedSession?.photoUrl && !imageUrl.includes('photoUrl=')) {
-          const sep = imageUrl.includes('?') ? '&' : '?';
-          imageUrl = `${imageUrl}${sep}photoUrl=${encodeURIComponent(mergedSession.photoUrl)}`;
-        }
+      // /api/bot/mock-poster IS the real working endpoint on ohmykick.com.
+      // DO NOT replace it with /api/bot/poster — that route does not exist.
+      // Instead, inject photoUrl as a query param so ohmykick.com renders
+      // the user's uploaded photo directly inside the passport poster.
+      if (imageUrl && imageUrl.includes('ohmykick.com') && mergedSession?.photoUrl && !imageUrl.includes('photoUrl=')) {
+        const sep = imageUrl.includes('?') ? '&' : '?';
+        imageUrl = `${imageUrl}${sep}photoUrl=${encodeURIComponent(mergedSession.photoUrl)}`;
       }
       return {
         kind: 'image',
@@ -788,7 +787,7 @@ async function sendTelegramResponse(
   ctx?: any
 ): Promise<void> {
   response.messages = cleanDuplicateMenus(response.messages);
-  
+
   let isEdited = false;
   if (ctx && ctx.callbackQuery && response.messages.length > 0) {
     const firstMsg = response.messages[0];
