@@ -1,5 +1,6 @@
 import { Telegraf, Markup } from 'telegraf';
 import dotenv from 'dotenv';
+import sharp from 'sharp';
 
 dotenv.config();
 
@@ -89,10 +90,72 @@ export async function sendTgPhoto(
   buttons?: any
 ): Promise<void> {
   try {
+    let finalPhoto = photoUrlOrBuffer;
+
+    if (typeof photoUrlOrBuffer === 'string' && photoUrlOrBuffer.startsWith('http')) {
+      try {
+        const url = new URL(photoUrlOrBuffer);
+        const isPassport = url.pathname.includes('/api/bot/poster') && url.searchParams.get('type') === 'passport';
+        const photoUrlParam = url.searchParams.get('photoUrl');
+
+        if (isPassport && photoUrlParam) {
+          console.log(`[TG sendPhoto] Intercepting passport image for composite. Photo URL: ${photoUrlParam}`);
+          const [passportRes, photoRes] = await Promise.all([
+            fetch(photoUrlOrBuffer),
+            fetch(photoUrlParam),
+          ]);
+
+          if (passportRes.ok && photoRes.ok) {
+            const passportBuf = Buffer.from(await passportRes.arrayBuffer());
+            const photoBuf = Buffer.from(await photoRes.arrayBuffer());
+
+            const meta = await sharp(passportBuf).metadata();
+            const W = meta.width || 540;
+            const scale = W / 540;
+
+            const cx = Math.round(270 * scale);
+            const cy = Math.round(258 * scale);
+            const r = Math.round(122 * scale);
+            const size = r * 2;
+
+            const circleSvg = Buffer.from(
+              `<svg width="${size}" height="${size}">
+                <circle cx="${r}" cy="${r}" r="${r}" fill="white"/>
+              </svg>`
+            );
+
+            const croppedPhoto = await sharp(photoBuf)
+              .resize(size, size, { fit: 'cover' })
+              .composite([{
+                input: circleSvg,
+                blend: 'dest-in'
+              }])
+              .png()
+              .toBuffer();
+
+            finalPhoto = await sharp(passportBuf)
+              .composite([{
+                input: croppedPhoto,
+                top: cy - r,
+                left: cx - r,
+              }])
+              .png()
+              .toBuffer();
+
+            console.log(`[TG sendPhoto] Composite successful. Size: ${finalPhoto.length} bytes`);
+          } else {
+            console.warn(`[TG sendPhoto] Fetch template/photo failed. Passport: ${passportRes.status}, Photo: ${photoRes.status}. Falling back to URL.`);
+          }
+        }
+      } catch (err: any) {
+        console.error(`[TG sendPhoto] Failed to composite passport image: ${err.message}. Falling back to original URL.`);
+      }
+    }
+
     const photo =
-      typeof photoUrlOrBuffer === 'string'
-        ? { url: photoUrlOrBuffer }
-        : { source: photoUrlOrBuffer, filename: 'poster.png' };
+      typeof finalPhoto === 'string'
+        ? { url: finalPhoto }
+        : { source: finalPhoto, filename: 'poster.png' };
 
     const rows = buttons ? normalizeButtons(buttons, 3) : [];
     const replyMarkup = rows.length > 0
