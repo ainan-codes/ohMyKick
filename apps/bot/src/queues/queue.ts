@@ -111,6 +111,19 @@ async function processPosterJob(job: { data: any }) {
     const prediction = await getUserPredictionForMatch(userId, matchId);
     if (!match || !prediction) throw new Error('Match or prediction not found');
 
+    // ── Fallback: if result_poster_url already stored, skip generation and deliver directly ──
+    if (prediction.result_poster_url && !prediction.result_poster_sent_tg) {
+      console.log(`[Queue] result poster already stored for prediction ${predictionId}, skipping generation → delivering directly`);
+      await notifyQueue.add('send-poster', {
+        userId,
+        matchId,
+        predictionId,
+        posterUrl: prediction.result_poster_url,
+        type,
+      });
+      return;
+    }
+
     params = new URLSearchParams({
       name: user.name,
       countryName: user.country_name,
@@ -185,13 +198,35 @@ async function processPosterJob(job: { data: any }) {
     throw new Error(`Unknown poster type: ${type}`);
   }
 
-  params.set('type', type);
+  // Map internal type name to the API's query param value.
+  // IMPORTANT: OhMyKick poster API uses 'results' (plural) for result posters,
+  // but our internal job type is 'result' (singular). Do NOT rename the internal type —
+  // it is used for DB columns (result_poster_url), storage paths, and queue names.
+  const apiTypeParam = type === 'result' ? 'results' : type;
+  params.set('type', apiTypeParam);
   const posterApiUrl = `${appUrl}/api/bot/poster?${params}`;
 
   // Download poster PNG
   console.log(`[Queue] Requesting poster API URL: ${posterApiUrl}`);
   const response = await fetch(posterApiUrl);
-  if (!response.ok) throw new Error(`Poster API error: ${response.status}`);
+  if (!response.ok) {
+    // If the poster API route is missing (404) and we already have a stored poster URL,
+    // fall back to delivering the stored poster rather than failing silently.
+    if (response.status === 404 && (type === 'result' || type === 'prematch') && predictionId) {
+      const existingPrediction = await getUserPredictionForMatch(userId, matchId!);
+      const storedUrl = type === 'result'
+        ? existingPrediction?.result_poster_url
+        : existingPrediction?.prematch_poster_url;
+      if (storedUrl) {
+        console.warn(`[Queue] Poster API returned 404 for type=${type}. Falling back to stored URL: ${storedUrl}`);
+        await notifyQueue.add('send-poster', {
+          userId, matchId, predictionId, posterUrl: storedUrl, type,
+        });
+        return;
+      }
+    }
+    throw new Error(`Poster API error: ${response.status} for ${posterApiUrl}`);
+  }
   const imageBuffer = await response.arrayBuffer();
   const buffer = Buffer.from(imageBuffer);
   console.log(`[Queue] Downloaded poster: ${buffer.length} bytes`);

@@ -216,6 +216,9 @@ export function registerTelegramHandler(app: FastifyInstance) {
       const buffer = Buffer.from(await response.arrayBuffer());
 
       const { supabase } = await import('../db/client.js');
+      // Path within the 'photos' bucket. Uses a 'photos/' subfolder so all user
+      // photos are grouped under photos/photos/{tgId}.jpg in Storage.
+      // Public URL format: .../public/photos/photos/{tgId}.jpg — this is correct and working.
       const path = `photos/${tgId}.jpg`;
       await supabase.storage.from('photos').upload(path, buffer, {
         contentType: 'image/jpeg',
@@ -235,28 +238,29 @@ export function registerTelegramHandler(app: FastifyInstance) {
           await syncUserSessionState(user.id, apiResponse.sessionState);
           let mapped = mapRemoteResponse(apiResponse, transitionMsg);
 
-          if (isUpdatePhoto) {
-            mapped.messages = mapped.messages.map((m: any) => {
-              if (m.text?.includes('unchanged') || m.text?.includes('No change')) {
-                return { kind: 'text', text: '📸 Photo updated successfully!' };
-              }
-              return m;
-            });
-
-            // Automatically request and append the updated passport image
-            try {
-              const updatedSession = getUserSessionState({
-                ...user,
-                photo_url: urlData.publicUrl,
-                conversation_state: JSON.stringify(apiResponse.sessionState)
-              });
-              const passportRes = await callRemoteAPI(tgId, 'passport', updatedSession);
-              await syncUserSessionState(user.id, passportRes.sessionState);
-              const mappedPassport = mapRemoteResponse(passportRes, 'passport', updatedSession);
-              mapped.messages.push(...mappedPassport.messages);
-            } catch (err: any) {
-              console.error('[TG photo passport fetch]', err.message);
+          // Always show a success message when photo is updated
+          mapped.messages = mapped.messages.map((m: any) => {
+            if (m.text?.includes('unchanged') || m.text?.includes('No change')) {
+              return { kind: 'text', text: '📸 Photo updated successfully!' };
             }
+            return m;
+          });
+
+          // Always regenerate and send the updated passport after any photo upload
+          // (both ONBOARDING_PHOTO and UPDATE_PHOTO). The passport must reflect the
+          // new photo_url immediately — it is the source of truth.
+          try {
+            const updatedSession = getUserSessionState({
+              ...user,
+              photo_url: urlData.publicUrl,
+              conversation_state: JSON.stringify(apiResponse.sessionState)
+            });
+            const passportRes = await callRemoteAPI(tgId, 'passport', updatedSession);
+            await syncUserSessionState(user.id, passportRes.sessionState);
+            const mappedPassport = mapRemoteResponse(passportRes, 'passport', updatedSession);
+            mapped.messages.push(...mappedPassport.messages);
+          } catch (err: any) {
+            console.error('[TG photo passport fetch]', err.message);
           }
           await sendTelegramResponse(ctx.chat.id, mapped);
         } catch (err: any) {
@@ -489,7 +493,7 @@ function getUserSessionState(user: any): any {
 
   // Always ensure dbId and photoUrl are populated in sessionState
   sessionState.dbId = sessionState.dbId || user.id;
-  sessionState.photoUrl = sessionState.photoUrl || user.photo_url || '';
+  sessionState.photoUrl = user.photo_url || sessionState.photoUrl || '';
 
   return sessionState;
 }
@@ -572,8 +576,11 @@ function getErrorKeyboard(lastCommand: string): BotResponse {
 export function mapRemoteResponse(apiResponse: any, command?: string, userSessionState?: any): BotResponse {
   const messages = apiResponse.messages || [];
   const sessionFromResponse = apiResponse.sessionState || {};
-  // Merge: prefer userSessionState (has fresh photo_url from DB) over session from response
-  const mergedSession = userSessionState ? { ...sessionFromResponse, ...userSessionState } : sessionFromResponse;
+  // Merge: API response sessionState is authoritative (wins on conflict).
+  // userSessionState provides fallbacks for fields the API doesn't return.
+  // This prevents stale photoUrl values in the local session from overriding
+  // the fresh value the API has just read from the database.
+  const mergedSession = userSessionState ? { ...userSessionState, ...sessionFromResponse } : sessionFromResponse;
 
   let mappedMessages = messages.map((msg: any) => {
     if (msg.type === 'text') {
