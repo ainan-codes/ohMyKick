@@ -254,11 +254,12 @@ export function registerTelegramHandler(app: FastifyInstance) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fan_db_id: session.dbId, photo_b64: base64Photo }),
         });
-        console.log('[DEBUG] upload-photo response status:', uploadRes.status, 'body:', await uploadRes.clone().text());
+        // Read body exactly ONCE — .clone() is not supported in this Node fetch implementation
+        const uploadResText = await uploadRes.text().catch(() => '');
+        console.log('[DEBUG] upload-photo response status:', uploadRes.status, 'body:', uploadResText);
 
         if (!uploadRes.ok) {
-          const errBody = await uploadRes.text().catch(() => '');
-          console.error(`[TG photo] upload-photo failed: HTTP ${uploadRes.status} — ${errBody}`);
+          console.error(`[TG photo] upload-photo failed: HTTP ${uploadRes.status} — ${uploadResText}`);
           await sendTgText(chatId,
             '⚠️ Couldn\'t save your photo — try a smaller or different image.');
           return;
