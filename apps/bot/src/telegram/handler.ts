@@ -227,11 +227,11 @@ export function registerTelegramHandler(app: FastifyInstance) {
       // Convert to base64
       const base64Photo = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`;
 
-      // Call POST https://www.ohmykick.com/api/bot/upload-photo
+      // Call POST https://ohmykick.com/api/bot/upload-photo
       const fanDbId = sessionState.dbId;
       if (fanDbId) {
         try {
-          const uploadRes = await fetch('https://www.ohmykick.com/api/bot/upload-photo', {
+          const uploadRes = await fetch('https://ohmykick.com/api/bot/upload-photo', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ fan_db_id: fanDbId, photo_b64: base64Photo }),
