@@ -224,29 +224,13 @@ export function registerTelegramHandler(app: FastifyInstance) {
         .jpeg({ quality: 75 })
         .toBuffer();
 
-      // Upload original (or resized) buffer to our Supabase Storage for prematch poster
-      const { supabase } = await import('../db/client.js');
-      // Path within the 'photos' bucket. Uses a 'photos/' subfolder so all user
-      // photos are grouped under photos/photos/{tgId}.jpg in Storage.
-      // Public URL format: .../public/photos/photos/{tgId}.jpg — this is correct and working.
-      const path = `photos/${tgId}.jpg`;
-      await supabase.storage.from('photos').upload(path, resizedBuffer, {
-        contentType: 'image/jpeg',
-        upsert: true,
-      });
-      const { data: urlData } = supabase.storage.from('photos').getPublicUrl(path);
+      // Convert to base64
+      const base64Photo = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`;
 
-      await updateUser(user.id, { photo_url: urlData.publicUrl });
-      sessionState.photoUrl = urlData.publicUrl;
-      sessionState.dbId = user.id;
-
-      // ── KEY FIX: Upload photo to ohmykick.com's fans table ──────────────────
-      // ohmykick.com reads photo from the `fans` table (not our `users` table).
-      // We must push it via their upload endpoint so mock-poster can find it.
-      const fanDbId = sessionState.dbId || sessionState.fanDbId || user.id;
+      // Call POST https://www.ohmykick.com/api/bot/upload-photo
+      const fanDbId = sessionState.dbId;
       if (fanDbId) {
         try {
-          const base64Photo = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`;
           const uploadRes = await fetch('https://www.ohmykick.com/api/bot/upload-photo', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -263,58 +247,31 @@ export function registerTelegramHandler(app: FastifyInstance) {
           // Non-fatal — continue so user still gets a response
         }
       } else {
-        console.warn('[TG photo] No fanDbId available — skipping ohmykick upload-photo call');
+        console.warn('[TG photo] No fanDbId (sessionState.dbId) available — skipping ohmykick upload-photo call');
       }
-      // ────────────────────────────────────────────────────────────────────────
 
       if (process.env.USE_OHMYKICK_API === 'true') {
         try {
-          const isUpdatePhoto = sessionState.conversationState === 'UPDATE_PHOTO';
-          const transitionMsg = isUpdatePhoto ? 'cancel_photo' : 'skip_photo';
-          const apiResponse = await callRemoteAPI(tgId, transitionMsg, sessionState);
+          const apiResponse = await callRemoteAPI(tgId, 'photo_uploaded', sessionState);
           await syncUserSessionState(user.id, apiResponse.sessionState);
           const freshUserForPhoto = await getUserByTgId(tgId) || user;
           const freshSessionForPhoto = getUserSessionState(freshUserForPhoto);
-          let mapped = mapRemoteResponse(apiResponse, transitionMsg, freshSessionForPhoto);
+          const mapped = mapRemoteResponse(apiResponse, 'photo_uploaded', freshSessionForPhoto);
 
-          // Always show a success message when photo is updated
-          mapped.messages = mapped.messages.map((m: any) => {
-            if (m.text?.includes('unchanged') || m.text?.includes('No change')) {
-              return { kind: 'text', text: '📸 Photo updated successfully!' };
-            }
-            return m;
-          });
-
-          // Always regenerate and send the updated passport after any photo upload
-          // (both ONBOARDING_PHOTO and UPDATE_PHOTO). The passport must reflect the
-          // new photo_url immediately — it is the source of truth.
-          try {
-            const updatedSession = getUserSessionState({
-              ...user,
-              photo_url: urlData.publicUrl,
-              conversation_state: JSON.stringify(apiResponse.sessionState)
-            });
-            const passportRes = await callRemoteAPI(tgId, 'passport', updatedSession);
-            await syncUserSessionState(user.id, passportRes.sessionState);
-            const mappedPassport = mapRemoteResponse(passportRes, 'passport', updatedSession);
-            mapped.messages.push(...mappedPassport.messages);
-          } catch (err: any) {
-            console.error('[TG photo passport fetch]', err.message);
-          }
           await sendTelegramResponse(ctx.chat.id, mapped);
+          await sendTgText(ctx.chat.id, '📸 Photo updated successfully!');
         } catch (err: any) {
           console.error('[TG photo remote]', err.message);
-          const failedCmd = sessionState.conversationState === 'ONBOARDING_PHOTO' ? 'skip_photo' : 'cancel_photo';
-          await sendTelegramResponse(ctx.chat.id, getErrorKeyboard(failedCmd));
+          await sendTelegramResponse(ctx.chat.id, getErrorKeyboard('photo_uploaded'));
         }
       } else {
-        const botResponse = await handleOnboardingPhotoUploaded(user, urlData.publicUrl);
+        const botResponse = await handleOnboardingPhotoUploaded(user, '');
         await sendTelegramResponse(ctx.chat.id, botResponse);
       }
     } catch (err: any) {
       console.error('[TG photo handler]', err.message);
       if (process.env.USE_OHMYKICK_API === 'true') {
-        await sendTelegramResponse(ctx.chat.id, getErrorKeyboard('skip_photo'));
+        await sendTelegramResponse(ctx.chat.id, getErrorKeyboard('photo_uploaded'));
       } else {
         await ctx.reply('⚠️ Failed to upload photo. You can skip for now and add it later.');
       }
@@ -530,8 +487,7 @@ function getUserSessionState(user: any): any {
     };
   }
 
-  // Always ensure dbId and photoUrl are populated in sessionState
-  sessionState.dbId = sessionState.dbId || user.id;
+  // Preserve any locally stored photo URL without synthesizing remote IDs.
   sessionState.photoUrl = user.photo_url || sessionState.photoUrl || '';
 
   return sessionState;
@@ -620,15 +576,10 @@ export function mapRemoteResponse(apiResponse: any, command?: string, userSessio
   const sessionFromResponse = apiResponse.sessionState || {};
   // Merge: API response sessionState is authoritative (wins on conflict).
   // userSessionState provides fallbacks for fields the API doesn't return.
-  // CRITICAL: photoUrl must come from the local DB session, NOT from the API response.
-  // ohmykick.com's API does not reliably return photoUrl in sessionState.
-  // If we let sessionFromResponse overwrite it, the photo is lost and the passport
-  // shows a placeholder instead of the user's uploaded photo.
   const mergedSession = userSessionState
     ? {
         ...userSessionState,
         ...sessionFromResponse,
-        // Always preserve the DB-sourced photoUrl — never let API override it
         photoUrl: userSessionState.photoUrl || sessionFromResponse.photoUrl || '',
       }
     : sessionFromResponse;
@@ -685,14 +636,6 @@ export function mapRemoteResponse(apiResponse: any, command?: string, userSessio
         imageUrl = `${domain}${imageUrl}`;
       }
 
-      // /api/bot/mock-poster IS the real working endpoint on ohmykick.com.
-      // DO NOT replace it with /api/bot/poster — that route does not exist.
-      // Instead, inject photoUrl as a query param so ohmykick.com renders
-      // the user's uploaded photo directly inside the passport poster.
-      if (imageUrl && imageUrl.includes('ohmykick.com') && mergedSession?.photoUrl && !imageUrl.includes('photoUrl=')) {
-        const sep = imageUrl.includes('?') ? '&' : '?';
-        imageUrl = `${imageUrl}${sep}photoUrl=${encodeURIComponent(mergedSession.photoUrl)}`;
-      }
       return {
         kind: 'image',
         url: imageUrl,
