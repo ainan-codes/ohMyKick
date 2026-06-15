@@ -257,6 +257,7 @@ export function registerTelegramHandler(app: FastifyInstance) {
           const freshUserForPhoto = await getUserByTgId(tgId) || user;
           const freshSessionForPhoto = getUserSessionState(freshUserForPhoto);
           const mapped = mapRemoteResponse(apiResponse, 'photo_uploaded', freshSessionForPhoto);
+          await compositeUploadedPhotoIntoPassport(mapped, resizedBuffer);
 
           await sendTelegramResponse(ctx.chat.id, mapped);
           await sendTgText(ctx.chat.id, '📸 Photo updated successfully!');
@@ -825,7 +826,67 @@ async function dispatchTelegramMessage(
     }
 
     case 'image':
-      await sendTgPhoto(chatId, msg.url, msg.caption, msg.buttons);
+      await sendTgPhoto(chatId, (msg as any).buffer || msg.url, msg.caption, msg.buttons);
       break;
   }
+}
+
+async function compositeUploadedPhotoIntoPassport(response: BotResponse, uploadedPhotoBuffer: Buffer): Promise<void> {
+  for (const msg of response.messages) {
+    if (msg.kind !== 'image' || !isPassportPosterUrl(msg.url)) continue;
+
+    try {
+      (msg as any).buffer = await renderPassportWithPhoto(msg.url, uploadedPhotoBuffer);
+    } catch (err: any) {
+      console.error('[TG photo composite]', err.message);
+    }
+  }
+}
+
+function isPassportPosterUrl(imageUrl: string): boolean {
+  try {
+    const url = new URL(imageUrl);
+    return (
+      (url.pathname.includes('/api/bot/mock-poster') || url.pathname.includes('/api/bot/poster')) &&
+      url.searchParams.get('type') === 'passport'
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function renderPassportWithPhoto(passportUrl: string, uploadedPhotoBuffer: Buffer): Promise<Buffer> {
+  const passportRes = await fetch(passportUrl);
+  if (!passportRes.ok) {
+    throw new Error(`passport fetch failed: ${passportRes.status}`);
+  }
+
+  const sharp = (await import('sharp')).default;
+  const passportBuffer = Buffer.from(await passportRes.arrayBuffer());
+  const meta = await sharp(passportBuffer).metadata();
+  const width = meta.width || 540;
+  const scale = width / 540;
+
+  const centerX = Math.round(270 * scale);
+  const centerY = Math.round(258 * scale);
+  const radius = Math.round(112 * scale);
+  const size = radius * 2;
+
+  const circleMask = Buffer.from(
+    `<svg width="${size}" height="${size}"><circle cx="${radius}" cy="${radius}" r="${radius}" fill="white"/></svg>`
+  );
+
+  const croppedPhoto = await sharp(uploadedPhotoBuffer)
+    .resize(size, size, { fit: 'cover' })
+    .composite([{ input: circleMask, blend: 'dest-in' }])
+    .png()
+    .toBuffer();
+
+  const composited = await sharp(passportBuffer)
+    .composite([{ input: croppedPhoto, top: centerY - radius, left: centerX - radius }])
+    .png()
+    .toBuffer();
+
+  console.log(`[TG photo] Composited uploaded photo into passport (${composited.length} bytes)`);
+  return composited;
 }
