@@ -205,6 +205,7 @@ export function registerTelegramHandler(app: FastifyInstance) {
   bot.on('photo', async (ctx) => {
     const tgId   = ctx.from.id.toString();
     const chatId = ctx.chat.id;
+    console.log('[DEBUG] photo handler started, chatId =', chatId);
 
     const user = await getUserByTgId(tgId);
     if (!user) return;
@@ -276,7 +277,8 @@ export function registerTelegramHandler(app: FastifyInstance) {
         const mapped = mapRemoteResponse(apiResponse, 'photo_uploaded', apiResponse.sessionState);
         await sendTelegramResponse(chatId, mapped);
       } catch (err: any) {
-        console.error('[TG photo handler]', err.message);
+        console.error('[DEBUG] photo processing error:', err);
+        console.error('[DEBUG] error stack:', err instanceof Error ? err.stack : 'no stack');
         await sendTgText(chatId, '⚠️ Couldn\'t process that image, try again.');
       }
     } else {
