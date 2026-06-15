@@ -213,16 +213,24 @@ export function registerTelegramHandler(app: FastifyInstance) {
       const file = await ctx.telegram.getFile(largestPhoto.file_id);
       const photoUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
 
-      // Download and upload to Supabase Storage
+      // Download photo from Telegram
       const response = await fetch(photoUrl);
-      const buffer = Buffer.from(await response.arrayBuffer());
+      const rawBuffer = Buffer.from(await response.arrayBuffer());
 
+      // Resize to max 400x400 JPEG (ohmykick.com rejects base64 payloads over ~680 KB)
+      const sharp = (await import('sharp')).default;
+      const resizedBuffer = await sharp(rawBuffer)
+        .resize(400, 400, { fit: 'cover' })
+        .jpeg({ quality: 75 })
+        .toBuffer();
+
+      // Upload original (or resized) buffer to our Supabase Storage for prematch poster
       const { supabase } = await import('../db/client.js');
       // Path within the 'photos' bucket. Uses a 'photos/' subfolder so all user
       // photos are grouped under photos/photos/{tgId}.jpg in Storage.
       // Public URL format: .../public/photos/photos/{tgId}.jpg — this is correct and working.
       const path = `photos/${tgId}.jpg`;
-      await supabase.storage.from('photos').upload(path, buffer, {
+      await supabase.storage.from('photos').upload(path, resizedBuffer, {
         contentType: 'image/jpeg',
         upsert: true,
       });
@@ -231,6 +239,33 @@ export function registerTelegramHandler(app: FastifyInstance) {
       await updateUser(user.id, { photo_url: urlData.publicUrl });
       sessionState.photoUrl = urlData.publicUrl;
       sessionState.dbId = user.id;
+
+      // ── KEY FIX: Upload photo to ohmykick.com's fans table ──────────────────
+      // ohmykick.com reads photo from the `fans` table (not our `users` table).
+      // We must push it via their upload endpoint so mock-poster can find it.
+      const fanDbId = sessionState.dbId || sessionState.fanDbId || user.id;
+      if (fanDbId) {
+        try {
+          const base64Photo = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`;
+          const uploadRes = await fetch('https://www.ohmykick.com/api/bot/upload-photo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fan_db_id: fanDbId, photo_b64: base64Photo }),
+          });
+          if (!uploadRes.ok) {
+            const errBody = await uploadRes.text().catch(() => '');
+            console.error(`[TG photo] ohmykick upload-photo failed: ${uploadRes.status} ${errBody}`);
+          } else {
+            console.log(`[TG photo] Successfully uploaded photo to ohmykick fans table for fanDbId=${fanDbId}`);
+          }
+        } catch (uploadErr: any) {
+          console.error('[TG photo] ohmykick upload-photo error:', uploadErr.message);
+          // Non-fatal — continue so user still gets a response
+        }
+      } else {
+        console.warn('[TG photo] No fanDbId available — skipping ohmykick upload-photo call');
+      }
+      // ────────────────────────────────────────────────────────────────────────
 
       if (process.env.USE_OHMYKICK_API === 'true') {
         try {
